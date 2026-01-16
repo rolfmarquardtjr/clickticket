@@ -33,7 +33,11 @@ router.get('/', (req, res) => {
             LEFT JOIN areas a ON c.default_area_id = a.id
             WHERE c.active = 1
         `;
-        if (orgId) query += ` AND (c.org_id = '${orgId}' OR c.org_id = 'org-demo' OR c.org_id = 'null' OR c.org_id IS NULL)`;
+        if (orgId) {
+            query += ` AND c.org_id = '${orgId}'`;
+        } else {
+            query += ` AND c.org_id = 'org-demo'`;
+        }
         query += ' ORDER BY c.sort_order, c.name';
 
         const categories = getAll(query);

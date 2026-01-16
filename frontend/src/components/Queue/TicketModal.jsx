@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
-import { X, Clock, User, Tag, AlertTriangle, CheckCircle, MessageSquare, History, Mail, Phone, MessageCircle, Globe, Building, ArrowRight, Paperclip, FileText, Settings } from 'lucide-react';
+import { X, Clock, User, Tag, AlertTriangle, CheckCircle, MessageSquare, History, Mail, Phone, MessageCircle, Globe, Building, ArrowRight, Paperclip, FileText, Settings, Trash2 } from 'lucide-react';
 import { ticketsAPI, attachmentsAPI } from '../../api';
 import { STATUS_LABELS, getCategoryById } from '../../data/constants';
 import StatusChangeModal from '../StatusChangeModal';
 import TransferAreaModal from '../TransferAreaModal';
 import ActivityLog from '../ActivityLog';
+import { useAuth } from '../../context/AuthContext';
 
 const ORIGIN_ICONS = {
     email: Mail,
@@ -37,15 +38,18 @@ const TABS = [
     { id: 'history', label: 'Histórico', icon: History }
 ];
 
-export default function TicketModal({ ticket, onClose, onUpdate }) {
+export default function TicketModal({ ticket, onClose, onUpdate, onDelete, statusMeta }) {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
     const [showStatusModal, setShowStatusModal] = useState(false);
     const [showTransferModal, setShowTransferModal] = useState(false);
     const [transferLoading, setTransferLoading] = useState(false);
     const [activeTab, setActiveTab] = useState('details');
+    const { user, getAuthHeaders } = useAuth();
 
     const category = getCategoryById(ticket.category);
+    const getStatusLabel = (status) => statusMeta?.[status]?.label || STATUS_LABELS[status] || status;
+    const getStatusColor = (status) => statusMeta?.[status]?.color || STATUS_COLORS[status] || '#666';
 
     // State for enriched history (with attachments)
     const [enrichedHistory, setEnrichedHistory] = useState(ticket.history);
@@ -71,6 +75,21 @@ export default function TicketModal({ ticket, onClose, onUpdate }) {
             const updated = await ticketsAPI.changeStatus(ticket.id, newStatus, notes, attachmentIds);
             setShowStatusModal(false);
             onUpdate(updated);
+        } catch (err) {
+            setError(err.message);
+        } finally {
+            setLoading(false);
+        }
+    }
+
+    async function handleDelete() {
+        if (!confirm('Tem certeza que deseja excluir este ticket?')) return;
+        try {
+            setLoading(true);
+            setError(null);
+            await ticketsAPI.delete(ticket.id, getAuthHeaders());
+            onDelete?.(ticket.id);
+            onClose();
         } catch (err) {
             setError(err.message);
         } finally {
@@ -123,7 +142,7 @@ export default function TicketModal({ ticket, onClose, onUpdate }) {
 
     const OriginIcon = ORIGIN_ICONS[ticket.origin_channel] || Mail;
     const canChangeStatus = ticket.status !== 'encerrado';
-    const statusColor = STATUS_COLORS[ticket.status] || '#666';
+    const statusColor = getStatusColor(ticket.status);
 
     return (
         <>
@@ -188,23 +207,30 @@ export default function TicketModal({ ticket, onClose, onUpdate }) {
                         </div>
 
                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '12px' }}>
-                            <button className="btn btn-icon btn-ghost" onClick={onClose}>
-                                <X size={24} />
-                            </button>
+                            <div style={{ display: 'flex', gap: '8px' }}>
+                                {user?.role === 'admin' && (
+                                    <button className="btn btn-icon btn-ghost" onClick={handleDelete} title="Excluir ticket" style={{ color: 'var(--color-error)' }}>
+                                        <Trash2 size={18} />
+                                    </button>
+                                )}
+                                <button className="btn btn-icon btn-ghost" onClick={onClose} title="Fechar">
+                                    <X size={18} />
+                                </button>
+                            </div>
                             <div style={{
                                 display: 'flex',
                                 alignItems: 'center',
                                 gap: '8px',
                                 padding: '6px 12px',
-                                background: `${STATUS_COLORS[ticket.status]}15`,
-                                border: `1px solid ${STATUS_COLORS[ticket.status]}30`,
+                                background: `${statusColor}15`,
+                                border: `1px solid ${statusColor}30`,
                                 borderRadius: '20px',
-                                color: STATUS_COLORS[ticket.status],
+                                color: statusColor,
                                 fontWeight: 600,
                                 fontSize: '0.875rem'
                             }}>
-                                <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: STATUS_COLORS[ticket.status] }} />
-                                {STATUS_LABELS[ticket.status]}
+                                <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: statusColor }} />
+                                {getStatusLabel(ticket.status)}
                             </div>
                         </div>
                     </div>
@@ -403,8 +429,8 @@ export default function TicketModal({ ticket, onClose, onUpdate }) {
                                                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
                                                         <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>
                                                             {entry.from_status
-                                                                ? <>{STATUS_LABELS[entry.from_status]} <ArrowRight size={14} style={{ display: 'inline', margin: '0 4px' }} /> {STATUS_LABELS[entry.to_status]}</>
-                                                                : `Criado como ${STATUS_LABELS[entry.to_status]}`
+                                                                ? <>{getStatusLabel(entry.from_status)} <ArrowRight size={14} style={{ display: 'inline', margin: '0 4px' }} /> {getStatusLabel(entry.to_status)}</>
+                                                                : `Criado como ${getStatusLabel(entry.to_status)}`
                                                             }
                                                         </span>
                                                         <span className="text-muted" style={{ fontSize: '0.75rem' }}>

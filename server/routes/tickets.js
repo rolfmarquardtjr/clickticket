@@ -3,10 +3,20 @@ import { v4 as uuidv4 } from 'uuid';
 import { getOne, getAll, run } from '../database.js';
 import { validateTransition, getAvailableActions, STATUS } from '../statusMachine.js';
 import { calculateDeadline, enrichTicketWithSLA } from '../slaEngine.js';
-import { validateCategorySubcategory, getCategoryById, CATEGORIES, ORIGIN_CHANNELS, validateOriginChannel } from '../categories.js';
+import { getCategoryById, CATEGORIES, ORIGIN_CHANNELS, validateOriginChannel } from '../categories.js';
 import { verifyToken } from '../auth.js';
 
 const router = Router();
+
+function getAreaColumns(areaId, orgId) {
+    return getAll(`
+        SELECT status_key, is_closed
+        FROM kanban_columns
+        WHERE area_id = '${areaId}'
+          AND (org_id = '${orgId}' OR org_id = 'org-demo' OR org_id IS NULL)
+        ORDER BY sort_order ASC
+    `);
+}
 
 // GET /api/tickets - List all tickets with filters
 router.get('/', (req, res) => {
@@ -200,11 +210,31 @@ router.post('/', (req, res) => {
             errors.push('Impacto deve ser: baixo, medio ou alto');
         }
 
-        // Validate category-subcategory combination
+        // Validate category-subcategory combination per org
         if (category && subcategory) {
-            const categoryValidation = validateCategorySubcategory(category, subcategory);
-            if (!categoryValidation.valid) {
-                errors.push(categoryValidation.error);
+            if (orgId) {
+                const categoryRow = getOne(`
+                    SELECT id FROM categories
+                    WHERE id = '${category}' AND org_id = '${orgId}' AND active = 1
+                `);
+                if (!categoryRow) {
+                    errors.push('Categoria inválida para esta organização');
+                } else {
+                    const subRow = getOne(`
+                        SELECT id FROM subcategories
+                        WHERE id = '${subcategory}' AND category_id = '${category}' AND active = 1
+                    `);
+                    if (!subRow) {
+                        errors.push('Subcategoria inválida para esta categoria');
+                    }
+                }
+            } else {
+                const categoryInfo = getCategoryById(category);
+                if (!categoryInfo) {
+                    errors.push('Categoria inválida');
+                } else if (!categoryInfo.subcategories?.some(s => s.id === subcategory)) {
+                    errors.push('Subcategoria inválida para esta categoria');
+                }
             }
         }
 
@@ -316,6 +346,16 @@ router.patch('/:id/status', (req, res) => {
 
         if (!ticket) {
             return res.status(404).json({ error: 'Ticket não encontrado' });
+        }
+
+        const orgId = ticket.org_id || 'org-demo';
+        const areaColumns = getAreaColumns(ticket.area_id, orgId);
+        const isClosedCurrent = areaColumns.some(col => col.status_key === ticket.status && col.is_closed);
+        if (isClosedCurrent) {
+            return res.status(400).json({ error: 'Ticket encerrado não pode mudar de status' });
+        }
+        if (areaColumns.length > 0 && !areaColumns.some(col => col.status_key === newStatus)) {
+            return res.status(400).json({ error: 'Status inválido para esta área' });
         }
 
         // Validate transition (poka-yoke)
@@ -564,6 +604,38 @@ router.patch('/:id/transfer', (req, res) => {
     } catch (error) {
         console.error('Error transferring ticket:', error);
         res.status(500).json({ error: 'Erro ao transferir ticket' });
+    }
+});
+
+// DELETE /api/tickets/:id - Delete ticket (admin only)
+router.delete('/:id', (req, res) => {
+    try {
+        const authHeader = req.headers.authorization;
+        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+            return res.status(401).json({ error: 'Não autenticado' });
+        }
+
+        const token = authHeader.substring(7);
+        const decoded = verifyToken(token);
+        if (!decoded || decoded.role !== 'admin') {
+            return res.status(403).json({ error: 'Apenas administradores podem excluir tickets' });
+        }
+
+        const ticketId = req.params.id;
+        const ticket = getOne(`SELECT id FROM tickets WHERE id = '${ticketId}'`);
+        if (!ticket) {
+            return res.status(404).json({ error: 'Ticket não encontrado' });
+        }
+
+        run(`DELETE FROM attachments WHERE ticket_id = '${ticketId}'`);
+        run(`DELETE FROM ticket_comments WHERE ticket_id = '${ticketId}'`);
+        run(`DELETE FROM status_history WHERE ticket_id = '${ticketId}'`);
+        run(`DELETE FROM tickets WHERE id = '${ticketId}'`);
+
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Error deleting ticket:', error);
+        res.status(500).json({ error: 'Erro ao excluir ticket' });
     }
 });
 

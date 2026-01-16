@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react';
 import { Inbox, Search, Clock, Zap, CheckCircle2, Archive, X, Check, Loader2, MessageSquare, Upload, FileText } from 'lucide-react';
 import TicketCard from './TicketCard';
-import { STATUS, STATUS_LABELS } from '../../data/constants';
+import { STATUS, STATUS_LABELS, STATUS_COLORS } from '../../data/constants';
 import { ticketsAPI, attachmentsAPI } from '../../api';
 
 const STATUS_ICONS = {
@@ -13,21 +13,23 @@ const STATUS_ICONS = {
     [STATUS.ENCERRADO]: Archive
 };
 
-const STATUS_COLORS = {
-    [STATUS.NOVO]: '#6366f1',
-    [STATUS.EM_ANALISE]: '#3b82f6',
-    [STATUS.AGUARDANDO_CLIENTE]: '#f59e0b',
-    [STATUS.EM_EXECUCAO]: '#8b5cf6',
-    [STATUS.RESOLVIDO]: '#10b981',
-    [STATUS.ENCERRADO]: '#71717a'
-};
+const DEFAULT_COLUMNS = [
+    { status_key: STATUS.NOVO, label: STATUS_LABELS[STATUS.NOVO], color: STATUS_COLORS[STATUS.NOVO] },
+    { status_key: STATUS.EM_ANALISE, label: STATUS_LABELS[STATUS.EM_ANALISE], color: STATUS_COLORS[STATUS.EM_ANALISE] },
+    { status_key: STATUS.AGUARDANDO_CLIENTE, label: STATUS_LABELS[STATUS.AGUARDANDO_CLIENTE], color: STATUS_COLORS[STATUS.AGUARDANDO_CLIENTE] },
+    { status_key: STATUS.EM_EXECUCAO, label: STATUS_LABELS[STATUS.EM_EXECUCAO], color: STATUS_COLORS[STATUS.EM_EXECUCAO] },
+    { status_key: STATUS.RESOLVIDO, label: STATUS_LABELS[STATUS.RESOLVIDO], color: STATUS_COLORS[STATUS.RESOLVIDO] },
+    { status_key: STATUS.ENCERRADO, label: STATUS_LABELS[STATUS.ENCERRADO], color: STATUS_COLORS[STATUS.ENCERRADO] }
+];
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'application/pdf'];
 
-function QueueColumn({ status, tickets, onTicketClick, onDrop, dragOverStatus, onDragOver, onDragLeave }) {
+function QueueColumn({ column, tickets, onTicketClick, onDrop, dragOverStatus, onDragOver, onDragLeave, statusMeta }) {
+    const status = column.status_key;
     const Icon = STATUS_ICONS[status] || Inbox;
-    const color = STATUS_COLORS[status] || '#666';
+    const color = statusMeta?.[status]?.color || column.color || STATUS_COLORS[status] || '#666';
+    const label = statusMeta?.[status]?.label || column.label || STATUS_LABELS[status] || status;
     const isDropTarget = dragOverStatus === status;
 
     return (
@@ -51,7 +53,7 @@ function QueueColumn({ status, tickets, onTicketClick, onDrop, dragOverStatus, o
             <div className="queue-header">
                 <div className="queue-title" style={{ color }}>
                     <Icon size={16} />
-                    {STATUS_LABELS[status]}
+                    {label}
                 </div>
                 <span className="queue-count">{tickets.length}</span>
             </div>
@@ -76,7 +78,7 @@ function QueueColumn({ status, tickets, onTicketClick, onDrop, dragOverStatus, o
 }
 
 // Modal de anotação e evidências - SEMPRE abre para qualquer transição
-function NotesModal({ ticket, fromStatus, targetStatus, onConfirm, onCancel, isLoading }) {
+function NotesModal({ ticket, fromStatus, targetStatus, onConfirm, onCancel, isLoading, statusMeta }) {
     const [notes, setNotes] = useState('');
     const [files, setFiles] = useState([]);
     const [error, setError] = useState(null);
@@ -138,12 +140,12 @@ function NotesModal({ ticket, fromStatus, targetStatus, onConfirm, onCancel, isL
                 <div className="modal-body">
                     {/* De -> Para */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-sm)', marginBottom: 'var(--space-lg)' }}>
-                        <span className="badge" style={{ background: STATUS_COLORS[fromStatus], color: 'white' }}>
-                            {STATUS_LABELS[fromStatus]}
+                        <span className="badge" style={{ background: statusMeta?.[fromStatus]?.color || STATUS_COLORS[fromStatus], color: 'white' }}>
+                            {statusMeta?.[fromStatus]?.label || STATUS_LABELS[fromStatus] || fromStatus}
                         </span>
                         <span>→</span>
-                        <span className="badge" style={{ background: STATUS_COLORS[targetStatus], color: 'white' }}>
-                            {STATUS_LABELS[targetStatus]}
+                        <span className="badge" style={{ background: statusMeta?.[targetStatus]?.color || STATUS_COLORS[targetStatus], color: 'white' }}>
+                            {statusMeta?.[targetStatus]?.label || STATUS_LABELS[targetStatus] || targetStatus}
                         </span>
                     </div>
 
@@ -278,23 +280,19 @@ function NotesModal({ ticket, fromStatus, targetStatus, onConfirm, onCancel, isL
     );
 }
 
-export default function QueuePanel({ tickets, onTicketClick, onTicketUpdate }) {
+export default function QueuePanel({ tickets, columns, onTicketClick, onTicketUpdate, statusMeta }) {
     const [dragOverStatus, setDragOverStatus] = useState(null);
     const [error, setError] = useState(null);
     const [pendingDrop, setPendingDrop] = useState(null);
     const [loading, setLoading] = useState(false);
 
-    // Agrupa tickets por status
-    const ticketsByStatus = {};
-    Object.values(STATUS).forEach(s => { ticketsByStatus[s] = []; });
-    tickets.forEach(t => {
-        if (ticketsByStatus[t.status]) ticketsByStatus[t.status].push(t);
-    });
+    const columnsToRender = columns && columns.length > 0 ? columns : DEFAULT_COLUMNS;
 
     // Ao arrastar, SEMPRE abre modal para pedir comentário
     function handleDrop(ticket, newStatus) {
         if (ticket.status === newStatus) return;
-        if (ticket.status === 'encerrado') {
+        const isClosed = statusMeta?.[ticket.status]?.is_closed || ticket.status === 'encerrado';
+        if (isClosed) {
             setError('Ticket encerrado não pode mudar de status');
             setTimeout(() => setError(null), 3000);
             return;
@@ -338,18 +336,22 @@ export default function QueuePanel({ tickets, onTicketClick, onTicketUpdate }) {
             )}
 
             <div className="queue-panel">
-                {Object.entries(ticketsByStatus).map(([status, statusTickets]) => (
+                {columnsToRender.map(column => {
+                    const statusTickets = tickets.filter(t => t.status === column.status_key);
+                    return (
                     <QueueColumn
-                        key={status}
-                        status={status}
+                        key={column.status_key}
+                        column={column}
                         tickets={statusTickets}
                         onTicketClick={onTicketClick}
                         onDrop={handleDrop}
                         dragOverStatus={dragOverStatus}
                         onDragOver={setDragOverStatus}
                         onDragLeave={() => setDragOverStatus(null)}
+                        statusMeta={statusMeta}
                     />
-                ))}
+                    );
+                })}
             </div>
 
             {/* Modal de comentário - abre em QUALQUER transição */}
@@ -361,6 +363,7 @@ export default function QueuePanel({ tickets, onTicketClick, onTicketUpdate }) {
                     onConfirm={(notes, files) => doStatusChange(pendingDrop.ticket, pendingDrop.targetStatus, notes, files)}
                     onCancel={() => setPendingDrop(null)}
                     isLoading={loading}
+                    statusMeta={statusMeta}
                 />
             )}
         </div>

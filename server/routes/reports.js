@@ -24,6 +24,33 @@ function getOrgFilter(req) {
   return ''; // Fallback: no filter (or could deny access, but keeping consistent with existing pattern)
 }
 
+function getOrgId(req) {
+  const authHeader = req.headers.authorization;
+  if (authHeader) {
+    try {
+      const token = authHeader.substring(7);
+      const decoded = verifyToken(token);
+      return decoded?.orgId || 'org-demo';
+    } catch (e) {
+      return 'org-demo';
+    }
+  }
+  return 'org-demo';
+}
+
+function getClosedStatuses(orgId) {
+  const rows = getAll(`
+    SELECT DISTINCT status_key as status
+    FROM kanban_columns
+    WHERE (org_id = '${orgId}' OR org_id = 'org-demo' OR org_id IS NULL)
+      AND is_closed = 1
+  `);
+  if (!rows || rows.length === 0) {
+    return ['resolvido', 'encerrado'];
+  }
+  return rows.map(r => r.status);
+}
+
 // GET /api/reports/by-category - Tickets grouped by category
 router.get('/by-category', (req, res) => {
   try {
@@ -103,11 +130,14 @@ router.get('/by-status', (req, res) => {
 router.get('/sla', (req, res) => {
   try {
     const orgFilter = getOrgFilter(req);
+    const orgId = getOrgId(req);
+    const closedStatuses = getClosedStatuses(orgId);
+    const closedList = closedStatuses.map(s => `'${s}'`).join(',') || "'encerrado'";
 
     // Get all non-closed tickets
     const activeTickets = getAll(`
       SELECT * FROM tickets
-      WHERE status NOT IN ('encerrado') ${orgFilter}
+      WHERE status NOT IN (${closedList}) ${orgFilter}
     `);
 
     // Calculate SLA status for each
@@ -215,15 +245,18 @@ router.get('/backlog', (req, res) => {
 router.get('/summary', (req, res) => {
   try {
     const orgFilter = getOrgFilter(req);
+    const orgId = getOrgId(req);
+    const closedStatuses = getClosedStatuses(orgId);
+    const closedList = closedStatuses.map(s => `'${s}'`).join(',') || "'encerrado'";
 
     // Total counts
     const totals = getOne(`
       SELECT 
         COUNT(*) as total_tickets,
-        SUM(CASE WHEN status NOT IN ('encerrado', 'resolvido') THEN 1 ELSE 0 END) as active_tickets,
+        SUM(CASE WHEN status NOT IN (${closedList}) THEN 1 ELSE 0 END) as active_tickets,
         SUM(CASE WHEN status = 'novo' THEN 1 ELSE 0 END) as new_tickets,
         SUM(CASE WHEN status = 'aguardando_cliente' THEN 1 ELSE 0 END) as waiting_client,
-        SUM(CASE WHEN status IN ('encerrado', 'resolvido') THEN 1 ELSE 0 END) as closed_tickets
+        SUM(CASE WHEN status IN (${closedList}) THEN 1 ELSE 0 END) as closed_tickets
       FROM tickets
       WHERE 1=1 ${orgFilter}
     `) || { total_tickets: 0, active_tickets: 0, new_tickets: 0, waiting_client: 0, closed_tickets: 0 };
@@ -245,7 +278,7 @@ router.get('/summary', (req, res) => {
     // Active tickets with SLA status
     const activeTickets = getAll(`
       SELECT * FROM tickets
-      WHERE status NOT IN ('encerrado', 'resolvido') ${orgFilter}
+      WHERE status NOT IN (${closedList}) ${orgFilter}
     `);
 
     const slaStats = { ok: 0, risco: 0, quebrado: 0 };

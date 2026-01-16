@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Plus, RefreshCw, BarChart3, Inbox, Clock, AlertTriangle, CheckCircle, Building, Users, Headphones, Code, Settings, CheckSquare } from 'lucide-react';
-import { ticketsAPI, reportsAPI, areasAPI } from '../api';
+import { ticketsAPI, reportsAPI, areasAPI, kanbanColumnsAPI } from '../api';
 import QueuePanel from '../components/Queue/QueuePanel';
 import TicketModal from '../components/Queue/TicketModal';
 import CreateTicketModal from '../components/CreateTicketModal';
@@ -23,10 +23,19 @@ export default function Dashboard() {
     const [selectedTicket, setSelectedTicket] = useState(null);
     const [showCreateModal, setShowCreateModal] = useState(false);
     const [loading, setLoading] = useState(true);
+    const [kanbanColumns, setKanbanColumns] = useState([]);
 
     useEffect(() => {
         loadData();
     }, []);
+
+    useEffect(() => {
+        if (selectedArea === 'all') {
+            setKanbanColumns([]);
+            return;
+        }
+        loadKanbanColumns(selectedArea);
+    }, [selectedArea]);
 
     async function loadData() {
         try {
@@ -43,6 +52,16 @@ export default function Dashboard() {
             console.error('Error loading data:', error);
         } finally {
             setLoading(false);
+        }
+    }
+
+    async function loadKanbanColumns(areaId) {
+        try {
+            const columns = await kanbanColumnsAPI.list(areaId);
+            setKanbanColumns(columns);
+        } catch (error) {
+            console.error('Error loading kanban columns:', error);
+            setKanbanColumns([]);
         }
     }
 
@@ -76,6 +95,16 @@ export default function Dashboard() {
         });
         setSelectedTicket(null);
     }
+
+    function handleTicketDelete(ticketId) {
+        setTickets(prev => prev.filter(t => t.id !== ticketId));
+        setSelectedTicket(null);
+    }
+
+    const statusMeta = kanbanColumns.reduce((acc, col) => {
+        acc[col.status_key] = { label: col.label, color: col.color, is_closed: !!col.is_closed };
+        return acc;
+    }, {});
 
     return (
         <div>
@@ -248,6 +277,8 @@ export default function Dashboard() {
             ) : (
                 <QueuePanel
                     tickets={filteredTickets}
+                    columns={kanbanColumns}
+                    statusMeta={statusMeta}
                     onTicketClick={handleTicketClick}
                     onTicketUpdate={handleTicketUpdate}
                 />
@@ -259,6 +290,8 @@ export default function Dashboard() {
                     ticket={selectedTicket}
                     onClose={() => setSelectedTicket(null)}
                     onUpdate={handleTicketUpdate}
+                    onDelete={handleTicketDelete}
+                    statusMeta={statusMeta}
                 />
             )}
 

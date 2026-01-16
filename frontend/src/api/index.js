@@ -46,6 +46,10 @@ export const ticketsAPI = {
         body: JSON.stringify({ status, notes, attachmentIds }),
         headers: authHeaders
     }),
+    delete: (id, authHeaders = {}) => fetchAPI(`/tickets/${id}`, {
+        method: 'DELETE',
+        headers: authHeaders
+    }),
 
     assign: (id, userId, authHeaders = {}) => fetchAPI(`/tickets/${id}/assign`, {
         method: 'PATCH',
@@ -280,4 +284,43 @@ export const customFieldsAPI = {
     })
 };
 
-export default { ticketsAPI, clientsAPI, areasAPI, productsAPI, slaPoliciesAPI, importAPI, reportsAPI, authAPI, attachmentsAPI, commentsAPI, categoriesAPI, customFieldsAPI };
+// Kanban Columns API
+export const kanbanColumnsAPI = {
+    list: (areaId) => fetchAPI(`/areas/${areaId}/kanban-columns`),
+    create: (areaId, data) => fetchAPI(`/areas/${areaId}/kanban-columns`, {
+        method: 'POST',
+        body: JSON.stringify(data)
+    }),
+    update: (id, data) => fetchAPI(`/kanban-columns/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(data)
+    }),
+    delete: (id) => fetchAPI(`/kanban-columns/${id}`, {
+        method: 'DELETE'
+    }),
+    reorder: (areaId, columns) => fetchAPI(`/areas/${areaId}/kanban-columns/reorder`, {
+        method: 'PUT',
+        body: JSON.stringify({ columns })
+    })
+};
+
+// Email Mailboxes API
+export const emailMailboxesAPI = {
+    list: () => fetchAPI('/email-mailboxes'),
+    create: (data) => fetchAPI('/email-mailboxes', {
+        method: 'POST',
+        body: JSON.stringify(data)
+    }),
+    update: (id, data) => fetchAPI(`/email-mailboxes/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(data)
+    }),
+    remove: (id) => fetchAPI(`/email-mailboxes/${id}`, {
+        method: 'DELETE'
+    }),
+    test: (id) => fetchAPI(`/email-mailboxes/${id}/test`, {
+        method: 'POST'
+    })
+};
+
+export default { ticketsAPI, clientsAPI, areasAPI, productsAPI, slaPoliciesAPI, importAPI, reportsAPI, authAPI, attachmentsAPI, commentsAPI, categoriesAPI, customFieldsAPI, kanbanColumnsAPI, emailMailboxesAPI };

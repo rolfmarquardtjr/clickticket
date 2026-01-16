@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import { fileURLToPath } from 'url';
@@ -19,6 +20,9 @@ import attachmentsRouter from './routes/attachments.js';
 import commentsRouter from './routes/comments.js';
 import categoriesRouter from './routes/categories.js';
 import customFieldsRouter from './routes/custom-fields.js';
+import kanbanColumnsRouter from './routes/kanban-columns.js';
+import emailMailboxesRouter from './routes/email-mailboxes.js';
+import { startEmailIngestor } from './services/emailIngestor.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -46,6 +50,8 @@ app.use('/api/attachments', attachmentsRouter);
 app.use('/api/comments', commentsRouter);
 app.use('/api/categories', categoriesRouter);
 app.use('/api/custom-fields', customFieldsRouter);
+app.use('/api', kanbanColumnsRouter);
+app.use('/api', emailMailboxesRouter);
 
 // Health check
 app.get('/api/health', (req, res) => {
@@ -63,6 +69,7 @@ async function start() {
     try {
         await initDatabase();
         console.log('✅ Database initialized');
+        startEmailIngestor();
 
         app.listen(PORT, () => {
             console.log(`

@@ -26,7 +26,7 @@ router.get('/', (req, res) => {
 
         const { entity_type, entity_id, active } = req.query;
 
-        let query = `SELECT * FROM custom_fields WHERE (org_id = '${orgId}' OR org_id = 'org-demo' OR org_id = 'null' OR org_id IS NULL)`;
+        let query = `SELECT * FROM custom_fields WHERE org_id = '${orgId}'`;
 
         if (entity_type) {
             query += ` AND entity_type = '${entity_type}'`;

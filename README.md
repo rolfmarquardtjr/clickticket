@@ -18,7 +18,8 @@ O sistema foi desenvolvido para ser multi-tenancy (preparado para múltiplas org
 - **Node.js + Express**: Servidor rápido e escalável.
 - **SQLite**: Banco de dados relacional (leve e em arquivo local para facilitar o deploy e desenvolvimento).
 - **JWT (JSON Web Tokens)**: Autenticação segura e gestão de sessão.
-- **Multer**: Gerenciamento de upload de arquivos (evidências/anexos).
+- **IMAPFlow + Mailparser**: Integração IMAP e parsing de e-mails.
+- **OpenRouter (LLM)**: Classificação inteligente para abertura automática de tickets.
 
 ---
 
@@ -30,7 +31,8 @@ O sistema foi desenvolvido para ser multi-tenancy (preparado para múltiplas org
 - **Fila Unificada**: Painel lateral para acesso rápido aos tickets da fila.
 
 ### 2. Gestão Visual (Kanban)
-- **Drag & Drop**: Movimentação de tickets entre colunas (Novo -> Em Análise -> Execução -> etc.) com atualização automática de status.
+- **Drag & Drop**: Movimentação de tickets entre colunas com atualização automática de status.
+- **Colunas customizáveis por área**: Renomear, reordenar e criar colunas (admin).
 - **SLA Visual**: Badges coloridas indicando o tempo restante ou se o prazo já estourou.
 - **Filtros Avançados**: Filtragem por prioridade, responsável e texto.
 
@@ -48,17 +50,23 @@ O sistema foi desenvolvido para ser multi-tenancy (preparado para múltiplas org
 - **Clientes e SLA**: Definição de políticas de SLA (prazos) por prioridade e perfil de cliente (VIP).
 - **Campos Personalizados**: Criação de campos dinâmicos (Texto, Número, Data, Lista) vinculados a Áreas específicas.
 - **Usuários**: Controle de acesso e permissões.
+- **Conexão de E-mail (IMAP)**: Criação automática de tickets por e-mail com IA.
 
 ### 5. Log de Atividades e Auditoria
 - Histórico completo de alterações em cada ticket (troca de status, novos comentários, anexos).
 - Quem fez o que e quando (Rastreabilidade).
+
+### 6. Abertura Automática por E-mail (IMAP + IA)
+- Conecte caixas IMAP (Gmail, Outlook, Zoho ou genérico).
+- IA classifica categoria, subcategoria, impacto e descrição.
+- Evita duplicados por Message-ID.
 
 ---
 
 ## 🛠️ Instalação e Configuração
 
 ### Pré-requisitos
-- **Node.js** (v18 ou superior) instalado.
+- **Node.js** (v18.17+ recomendado, v20 LTS ideal).
 - **Git** instalado.
 
 ### Passo a Passo
@@ -74,6 +82,13 @@ Abra um terminal na pasta raiz e navegue para a pasta `server`:
 ```bash
 cd server
 npm install
+```
+
+Crie o arquivo `server/.env`:
+```
+OPENROUTER_API_KEY=sk-or-v1-XXXXXX
+OPENROUTER_MODEL=meta-llama/llama-3.1-8b-instruct:free
+EMAIL_POLL_INTERVAL_SEC=60
 ```
 
 Para rodar o servidor:
@@ -106,6 +121,7 @@ npm run dev
 - **`auth.js`**: Lógica de login e verificação de token JWT.
 - **`slaEngine.js`**: Motor de cálculo de prazos e horas úteis.
 - **`routes/`**: Controladores de cada entidade (tickets, reports, users, etc.).
+- **`services/`**: Ingestão IMAP e classificação via IA.
 - **`uploads/`**: Pasta onde os anexos dos tickets são salvos.
 
 ### `/frontend` (Frontend)
@@ -128,5 +144,5 @@ O sistema utiliza um modelo de **Organization ID (`org_id`)**.
 
 ## 📝 Próximos Passos (Backlog)
 - [ ] Implementar notificações em tempo real (WebSockets).
-- [ ] Integração com WhatsApp/Email para abertura automática.
+- [ ] Integração com WhatsApp.
 - [ ] Dashboards customizáveis pelo usuário.

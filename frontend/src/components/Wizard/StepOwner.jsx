@@ -1,14 +1,23 @@
 import { useState, useEffect } from 'react';
 import { Users, Check } from 'lucide-react';
-import { areasAPI } from '../../api';
+import { areasAPI, customFieldsAPI } from '../../api';
 
-export default function StepOwner({ value, onChange, suggestedAreaId }) {
+export default function StepOwner({ value, onChange, suggestedAreaId, customData = {}, onCustomDataChange }) {
     const [areas, setAreas] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [customFields, setCustomFields] = useState([]);
 
     useEffect(() => {
         loadAreas();
     }, []);
+
+    useEffect(() => {
+        if (value?.id) {
+            loadCustomFields(value.id);
+        } else {
+            setCustomFields([]);
+        }
+    }, [value?.id]);
 
     async function loadAreas() {
         try {
@@ -28,6 +37,25 @@ export default function StepOwner({ value, onChange, suggestedAreaId }) {
         } finally {
             setLoading(false);
         }
+    }
+
+    async function loadCustomFields(areaId) {
+        try {
+            const fields = await customFieldsAPI.list({
+                entity_type: 'area',
+                entity_id: areaId,
+                active: true
+            });
+            setCustomFields(fields);
+        } catch (error) {
+            console.error('Error loading area custom fields:', error);
+            setCustomFields([]);
+        }
+    }
+
+    function handleCustomFieldChange(fieldId, fieldValue) {
+        if (!onCustomDataChange) return;
+        onCustomDataChange({ ...customData, [fieldId]: fieldValue });
     }
 
     return (
@@ -113,6 +141,55 @@ export default function StepOwner({ value, onChange, suggestedAreaId }) {
             {value && (
                 <div className="alert alert-success" style={{ marginTop: 'var(--space-lg)' }}>
                     ✅ Área "{value.name}" selecionada. Clique em "Criar Ticket" para finalizar.
+                </div>
+            )}
+
+            {customFields.length > 0 && (
+                <div className="section-divider" style={{ marginTop: 'var(--space-lg)' }}>
+                    <h4 className="section-title">
+                        Informações da Área ({customFields.length})
+                    </h4>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {customFields.map(field => (
+                            <div key={field.id} className={field.type === 'textarea' ? 'col-span-full' : 'form-group'}>
+                                <label className="form-label">
+                                    {field.label} {field.required && <span className="text-error">*</span>}
+                                </label>
+
+                                {field.type === 'select' ? (
+                                    <select
+                                        value={customData?.[field.id] || ''}
+                                        onChange={(e) => handleCustomFieldChange(field.id, e.target.value)}
+                                        className="form-input form-select"
+                                    >
+                                        <option value="">Selecione...</option>
+                                        {field.options.map((opt, i) => (
+                                            <option key={i} value={opt}>{opt}</option>
+                                        ))}
+                                    </select>
+                                ) : field.type === 'textarea' ? (
+                                    <textarea
+                                        value={customData?.[field.id] || ''}
+                                        onChange={(e) => handleCustomFieldChange(field.id, e.target.value)}
+                                        className="form-input form-textarea"
+                                        rows={3}
+                                    />
+                                ) : (
+                                    <input
+                                        type={field.type}
+                                        value={customData?.[field.id] || ''}
+                                        onChange={(e) => handleCustomFieldChange(field.id, e.target.value)}
+                                        className="form-input"
+                                    />
+                                )}
+
+                                {field.description && (
+                                    <p className="form-hint">{field.description}</p>
+                                )}
+                            </div>
+                        ))}
+                    </div>
                 </div>
             )}
         </div>

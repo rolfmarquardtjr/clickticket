@@ -2,15 +2,52 @@ import { Router } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { getOne, getAll, run } from '../database.js';
 
+const DEFAULT_KANBAN_COLUMNS = [
+    { status_key: 'novo', label: 'Novo', color: '#6366f1', sort_order: 1, is_closed: 0, is_system: 1 },
+    { status_key: 'em_analise', label: 'Em análise', color: '#3b82f6', sort_order: 2, is_closed: 0, is_system: 1 },
+    { status_key: 'aguardando_cliente', label: 'Aguardando cliente', color: '#f59e0b', sort_order: 3, is_closed: 0, is_system: 1 },
+    { status_key: 'em_execucao', label: 'Em execução', color: '#8b5cf6', sort_order: 4, is_closed: 0, is_system: 1 },
+    { status_key: 'resolvido', label: 'Resolvido', color: '#10b981', sort_order: 5, is_closed: 1, is_system: 1 },
+    { status_key: 'encerrado', label: 'Encerrado', color: '#71717a', sort_order: 6, is_closed: 1, is_system: 1 }
+];
+
 const router = Router();
+
+function getClosedStatuses(orgId) {
+    const rows = getAll(`
+        SELECT DISTINCT status_key as status
+        FROM kanban_columns
+        WHERE (org_id = '${orgId}' OR org_id = 'org-demo' OR org_id IS NULL)
+          AND is_closed = 1
+    `);
+    if (!rows || rows.length === 0) {
+        return ['resolvido', 'encerrado'];
+    }
+    return rows.map(r => r.status);
+}
+
+function seedDefaultColumns(areaId, orgId) {
+    DEFAULT_KANBAN_COLUMNS.forEach(col => {
+        const columnId = `kc-${uuidv4().slice(0, 8)}`;
+        run(`
+            INSERT INTO kanban_columns (id, org_id, area_id, status_key, label, color, sort_order, is_closed, is_system)
+            VALUES (
+                '${columnId}', '${orgId}', '${areaId}', '${col.status_key}', '${col.label}', '${col.color}',
+                ${col.sort_order}, ${col.is_closed}, ${col.is_system}
+            )
+        `);
+    });
+}
 
 // GET /api/areas - List all areas
 router.get('/', (req, res) => {
     try {
         const orgId = req.user?.org_id || 'org-demo';
+        const closedStatuses = getClosedStatuses(orgId);
+        const closedList = closedStatuses.map(s => `'${s}'`).join(',') || "'encerrado'";
         const areas = getAll(`
             SELECT a.*, 
-                (SELECT COUNT(*) FROM tickets WHERE area_id = a.id AND status NOT IN ('encerrado', 'resolvido')) as active_tickets
+                (SELECT COUNT(*) FROM tickets WHERE area_id = a.id AND status NOT IN (${closedList})) as active_tickets
             FROM areas a 
             WHERE (a.org_id = '${orgId}' OR a.org_id = 'org-demo' OR a.org_id = 'null' OR a.org_id IS NULL) 
             ORDER BY a.name ASC
@@ -64,6 +101,8 @@ router.post('/', (req, res) => {
             INSERT INTO areas (id, org_id, name, description)
             VALUES ('${id}', '${orgId}', '${name.trim().replace(/'/g, "''")}', ${description ? `'${description.replace(/'/g, "''")}'` : 'NULL'})
         `);
+
+        seedDefaultColumns(id, orgId);
 
         const created = getOne(`SELECT * FROM areas WHERE id = '${id}'`);
         res.status(201).json(created);
@@ -130,4 +169,3 @@ router.delete('/:id', (req, res) => {
 });
 
 export default router;
-

@@ -38,6 +38,7 @@ export default function CreateTicketModal({ onClose, onSuccess }) {
     const [description, setDescription] = useState('');
     const [area, setArea] = useState(null);
     const [attachments, setAttachments] = useState([]);
+    const [customData, setCustomData] = useState({});
 
     function handleCategoryChange(newCategory) {
         setCategory(newCategory);
@@ -85,10 +86,11 @@ export default function CreateTicketModal({ onClose, onSuccess }) {
                 client_id: client.id,
                 product_id: product?.id || null,
                 category: category.id,
-                subcategory: subcategory.id,
+                subcategory: subcategory?.id || subcategory,
                 impact,
                 description,
-                area_id: area.id
+                area_id: area.id,
+                custom_data: customData
             }, getAuthHeaders());
 
             // Upload attachments if any
@@ -237,6 +239,8 @@ export default function CreateTicketModal({ onClose, onSuccess }) {
                             onDescriptionChange={setDescription}
                             attachments={attachments}
                             onAttachmentsChange={setAttachments}
+                            customData={customData}
+                            onCustomDataChange={setCustomData}
                         />
                     )}
 
@@ -245,6 +249,8 @@ export default function CreateTicketModal({ onClose, onSuccess }) {
                             value={area}
                             onChange={setArea}
                             suggestedAreaId={category?.defaultArea}
+                            customData={customData}
+                            onCustomDataChange={setCustomData}
                         />
                     )}
 

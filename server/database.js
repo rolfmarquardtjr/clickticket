@@ -2,6 +2,7 @@ import initSqlJs from 'sql.js';
 import { readFileSync, writeFileSync, existsSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
+import { v4 as uuidv4 } from 'uuid';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -9,6 +10,15 @@ const __dirname = dirname(__filename);
 const DB_PATH = join(__dirname, 'database.sqlite');
 
 let db = null;
+
+const DEFAULT_KANBAN_COLUMNS = [
+  { status_key: 'novo', label: 'Novo', color: '#6366f1', sort_order: 1, is_closed: 0, is_system: 1 },
+  { status_key: 'em_analise', label: 'Em análise', color: '#3b82f6', sort_order: 2, is_closed: 0, is_system: 1 },
+  { status_key: 'aguardando_cliente', label: 'Aguardando cliente', color: '#f59e0b', sort_order: 3, is_closed: 0, is_system: 1 },
+  { status_key: 'em_execucao', label: 'Em execução', color: '#8b5cf6', sort_order: 4, is_closed: 0, is_system: 1 },
+  { status_key: 'resolvido', label: 'Resolvido', color: '#10b981', sort_order: 5, is_closed: 1, is_system: 1 },
+  { status_key: 'encerrado', label: 'Encerrado', color: '#71717a', sort_order: 6, is_closed: 1, is_system: 1 }
+];
 
 // Initialize database
 async function initDatabase() {
@@ -304,6 +314,75 @@ async function initDatabase() {
   `);
 
   // ============================================
+  // Kanban Columns (customizable per area)
+  // ============================================
+  db.run(`
+    CREATE TABLE IF NOT EXISTS kanban_columns (
+      id TEXT PRIMARY KEY,
+      org_id TEXT NOT NULL,
+      area_id TEXT NOT NULL,
+      status_key TEXT NOT NULL,
+      label TEXT NOT NULL,
+      color TEXT,
+      sort_order INTEGER DEFAULT 0,
+      is_closed INTEGER DEFAULT 0,
+      is_system INTEGER DEFAULT 0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (org_id) REFERENCES organizations(id),
+      FOREIGN KEY (area_id) REFERENCES areas(id)
+    );
+  `);
+
+  // ============================================
+  // Email Mailboxes (IMAP connectors)
+  // ============================================
+  db.run(`
+    CREATE TABLE IF NOT EXISTS email_mailboxes (
+      id TEXT PRIMARY KEY,
+      org_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      host TEXT NOT NULL,
+      port INTEGER NOT NULL,
+      secure INTEGER DEFAULT 1,
+      username TEXT NOT NULL,
+      password TEXT NOT NULL,
+      folder TEXT DEFAULT 'INBOX',
+      default_area_id TEXT,
+      allowed_category_ids TEXT,
+      default_impact TEXT DEFAULT 'medio',
+      enabled INTEGER DEFAULT 1,
+      last_uid INTEGER DEFAULT 0,
+      last_checked_at DATETIME,
+      status TEXT DEFAULT 'idle',
+      last_error TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (org_id) REFERENCES organizations(id),
+      FOREIGN KEY (default_area_id) REFERENCES areas(id)
+    );
+  `);
+
+  // ============================================
+  // Email Ingest Logs (dedupe + audit)
+  // ============================================
+  db.run(`
+    CREATE TABLE IF NOT EXISTS email_ingest_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      mailbox_id TEXT NOT NULL,
+      message_id TEXT,
+      from_email TEXT,
+      subject TEXT,
+      received_at DATETIME,
+      processed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      status TEXT DEFAULT 'processed',
+      created_ticket_id TEXT,
+      error TEXT,
+      FOREIGN KEY (mailbox_id) REFERENCES email_mailboxes(id),
+      FOREIGN KEY (created_ticket_id) REFERENCES tickets(id)
+    );
+  `);
+
+  // ============================================
   // Add missing columns to existing tables (migrations)
   // ============================================
   try {
@@ -410,6 +489,27 @@ async function initDatabase() {
     ];
     for (const [id, name] of defaultAreas) {
       db.run(`INSERT INTO areas (id, org_id, name) VALUES ('${id}', 'org-demo', '${name}')`);
+    }
+  }
+
+  // ============================================
+  // Seed default kanban columns per area
+  // ============================================
+  const areasForColumns = resultToObjects(db.exec('SELECT id, org_id FROM areas'));
+  for (const area of areasForColumns) {
+    const orgId = area.org_id || 'org-demo';
+    const columnsCount = db.exec(`SELECT COUNT(*) as count FROM kanban_columns WHERE area_id = '${area.id}'`)[0];
+    if (!columnsCount || columnsCount.values[0][0] === 0) {
+      for (const col of DEFAULT_KANBAN_COLUMNS) {
+        const columnId = `kc-${uuidv4().slice(0, 8)}`;
+        db.run(`
+          INSERT INTO kanban_columns (id, org_id, area_id, status_key, label, color, sort_order, is_closed, is_system)
+          VALUES (
+            '${columnId}', '${orgId}', '${area.id}', '${col.status_key}', '${col.label}', '${col.color}',
+            ${col.sort_order}, ${col.is_closed}, ${col.is_system}
+          )
+        `);
+      }
     }
   }
 

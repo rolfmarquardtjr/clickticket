@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { Settings, Package, Users, Clock, Tags, FileText, Plus, Edit, Trash2, Star, X, Loader2, Check, Upload, Download, AlertCircle, Search, Ticket, Eye, Layers, Tag, ChevronDown, ChevronRight, AlertOctagon } from 'lucide-react';
-import { productsAPI, slaPoliciesAPI, clientsAPI, importAPI, ticketsAPI, areasAPI, categoriesAPI } from '../api';
+import { Settings, Package, Users, Clock, Tags, FileText, Plus, Edit, Trash2, Star, X, Loader2, Check, Upload, Download, AlertCircle, Search, Ticket, Eye, Layers, Tag, ChevronDown, ChevronRight, AlertOctagon, Columns, ChevronUp, Mail } from 'lucide-react';
+import { productsAPI, slaPoliciesAPI, clientsAPI, importAPI, ticketsAPI, areasAPI, categoriesAPI, kanbanColumnsAPI, emailMailboxesAPI } from '../api';
 import CustomFieldsManager from '../components/Admin/CustomFieldsManager';
 import { useAuth } from '../context/AuthContext';
 
@@ -12,6 +12,7 @@ const TABS = [
     { id: 'custom_fields', label: 'Campos', icon: AlertOctagon },
     { id: 'sla', label: 'Políticas SLA', icon: Clock },
     { id: 'import', label: 'Importação', icon: Upload },
+    { id: 'email', label: 'E-mails', icon: Mail }
 ];
 
 export default function AdminPage() {
@@ -65,6 +66,7 @@ export default function AdminPage() {
             {activeTab === 'custom_fields' && <CustomFieldsManager />}
             {activeTab === 'sla' && <SlaPoliciesTab />}
             {activeTab === 'import' && <BulkImportTab />}
+            {activeTab === 'email' && <EmailTab />}
         </div>
     );
 }
@@ -1079,6 +1081,8 @@ function AreasTab() {
     const [loading, setLoading] = useState(true);
     const [showModal, setShowModal] = useState(false);
     const [editingArea, setEditingArea] = useState(null);
+    const [showKanbanModal, setShowKanbanModal] = useState(false);
+    const [kanbanArea, setKanbanArea] = useState(null);
 
     useEffect(() => {
         loadAreas();
@@ -1104,6 +1108,11 @@ function AreasTab() {
     function openEditModal(area) {
         setEditingArea(area);
         setShowModal(true);
+    }
+
+    function openKanbanEditor(area) {
+        setKanbanArea(area);
+        setShowKanbanModal(true);
     }
 
     async function handleDelete(area) {
@@ -1161,6 +1170,9 @@ function AreasTab() {
                                     </td>
                                     <td>
                                         <div style={{ display: 'flex', gap: 'var(--space-xs)' }}>
+                                            <button className="btn btn-icon btn-ghost" onClick={() => openKanbanEditor(area)} title="Kanban">
+                                                <Columns size={16} />
+                                            </button>
                                             <button className="btn btn-icon btn-ghost" onClick={() => openEditModal(area)} title="Editar">
                                                 <Edit size={16} />
                                             </button>
@@ -1181,6 +1193,13 @@ function AreasTab() {
                     area={editingArea}
                     onClose={() => setShowModal(false)}
                     onSave={() => { setShowModal(false); loadAreas(); }}
+                />
+            )}
+
+            {showKanbanModal && kanbanArea && (
+                <KanbanColumnsModal
+                    area={kanbanArea}
+                    onClose={() => setShowKanbanModal(false)}
                 />
             )}
         </div>
@@ -1241,6 +1260,634 @@ function AreaModal({ area, onClose, onSave }) {
                     </button>
                 </form>
             </div>
+        </div>
+    );
+}
+
+function KanbanColumnsModal({ area, onClose }) {
+    const [columns, setColumns] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
+    const [newLabel, setNewLabel] = useState('');
+    const [newStatusKey, setNewStatusKey] = useState('');
+    const [newClosed, setNewClosed] = useState(false);
+    const [saving, setSaving] = useState(false);
+
+    useEffect(() => {
+        loadColumns();
+    }, [area.id]);
+
+    async function loadColumns() {
+        try {
+            setLoading(true);
+            const data = await kanbanColumnsAPI.list(area.id);
+            setColumns(data);
+        } catch (err) {
+            setError(err.message || 'Erro ao carregar colunas');
+        } finally {
+            setLoading(false);
+        }
+    }
+
+    function sortedColumns() {
+        return [...columns].sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+    }
+
+    async function handleUpdateColumn(col, updates) {
+        try {
+            setSaving(true);
+            const updated = await kanbanColumnsAPI.update(col.id, updates);
+            setColumns(prev => prev.map(c => (c.id === updated.id ? updated : c)));
+        } catch (err) {
+            setError(err.message || 'Erro ao atualizar coluna');
+        } finally {
+            setSaving(false);
+        }
+    }
+
+    async function handleDeleteColumn(col) {
+        if (!confirm(`Excluir coluna "${col.label}"?`)) return;
+        try {
+            setSaving(true);
+            await kanbanColumnsAPI.delete(col.id);
+            setColumns(prev => prev.filter(c => c.id !== col.id));
+        } catch (err) {
+            setError(err.message || 'Erro ao excluir coluna');
+        } finally {
+            setSaving(false);
+        }
+    }
+
+    async function handleAddColumn(e) {
+        e.preventDefault();
+        setError(null);
+        if (!newLabel.trim() || !newStatusKey.trim()) {
+            setError('Preencha nome e status da coluna');
+            return;
+        }
+        try {
+            setSaving(true);
+            const created = await kanbanColumnsAPI.create(area.id, {
+                label: newLabel.trim(),
+                status_key: newStatusKey.trim(),
+                is_closed: newClosed
+            });
+            setColumns(prev => [...prev, created]);
+            setNewLabel('');
+            setNewStatusKey('');
+            setNewClosed(false);
+        } catch (err) {
+            setError(err.message || 'Erro ao criar coluna');
+        } finally {
+            setSaving(false);
+        }
+    }
+
+    async function moveColumn(col, direction) {
+        const list = sortedColumns();
+        const index = list.findIndex(c => c.id === col.id);
+        const targetIndex = index + direction;
+        if (targetIndex < 0 || targetIndex >= list.length) return;
+
+        const reordered = [...list];
+        [reordered[index], reordered[targetIndex]] = [reordered[targetIndex], reordered[index]];
+        const payload = reordered.map((c, idx) => ({ id: c.id, sort_order: idx + 1 }));
+        try {
+            setSaving(true);
+            const updated = await kanbanColumnsAPI.reorder(area.id, payload);
+            setColumns(updated);
+        } catch (err) {
+            setError(err.message || 'Erro ao reordenar colunas');
+        } finally {
+            setSaving(false);
+        }
+    }
+
+    return (
+        <div className="modal-overlay" onClick={onClose}>
+            <div
+                className="modal"
+                onClick={e => e.stopPropagation()}
+                style={{
+                    maxWidth: '860px',
+                    borderRadius: '20px',
+                    border: '1px solid var(--color-border)',
+                    background: 'linear-gradient(180deg, var(--color-bg-surface) 0%, var(--color-bg-secondary) 100%)',
+                    boxShadow: '0 24px 80px rgba(0, 0, 0, 0.25), 0 0 0 1px var(--color-border)',
+                    backdropFilter: 'blur(6px)'
+                }}
+            >
+                <div className="modal-header">
+                    <h3 className="modal-title" style={{ letterSpacing: '0.01em' }}>Kanban • {area.name}</h3>
+                    <button className="btn btn-icon btn-ghost" onClick={onClose}><X size={20} /></button>
+                </div>
+                <div className="modal-body" style={{ padding: '20px 24px 26px' }}>
+                    {loading ? (
+                        <div className="loading"><div className="spinner"></div></div>
+                    ) : (
+                        <div className="card" style={{
+                            marginBottom: 'var(--space-lg)',
+                            padding: '16px',
+                            background: 'var(--color-bg-card)',
+                            border: '1px solid var(--color-border)',
+                            borderRadius: '16px'
+                        }}>
+                            <div style={{
+                                display: 'grid',
+                                gridTemplateColumns: '140px 2fr 1fr 120px 80px',
+                                gap: '12px',
+                                padding: '10px 12px',
+                                borderRadius: '10px',
+                                background: 'var(--color-bg-tertiary)',
+                                color: 'var(--color-text-muted)',
+                                fontSize: '0.75rem',
+                                fontWeight: 600,
+                                textTransform: 'uppercase',
+                                letterSpacing: '0.04em'
+                            }}>
+                                <div>Ordem</div>
+                                <div>Nome</div>
+                                <div>Status</div>
+                                <div>Finalizado</div>
+                                <div style={{ textAlign: 'right' }}>Ações</div>
+                            </div>
+
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '12px' }}>
+                                {sortedColumns().map(col => (
+                                    <div key={col.id} style={{
+                                        display: 'grid',
+                                        gridTemplateColumns: '140px 2fr 1fr 120px 80px',
+                                        gap: '12px',
+                                        alignItems: 'center',
+                                        padding: '12px',
+                                        borderRadius: '12px',
+                                        border: '1px solid var(--color-border)',
+                                        background: 'linear-gradient(180deg, var(--color-bg-secondary) 0%, var(--color-bg-card) 100%)'
+                                    }}>
+                                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                            <button className="btn btn-icon btn-ghost" onClick={() => moveColumn(col, -1)} disabled={saving || col.status_key === 'novo'} title="Mover para cima">
+                                                <ChevronUp size={14} />
+                                            </button>
+                                            <button className="btn btn-icon btn-ghost" onClick={() => moveColumn(col, 1)} disabled={saving || col.status_key === 'novo'} title="Mover para baixo">
+                                                <ChevronDown size={14} />
+                                            </button>
+                                            <span
+                                                className="badge badge-neutral"
+                                                style={{
+                                                    fontSize: '0.7rem',
+                                                    background: col.status_key === 'novo' ? 'var(--color-primary-glow)' : 'var(--color-bg-hover)',
+                                                    border: col.status_key === 'novo' ? '1px solid var(--color-primary)' : '1px solid var(--color-border)',
+                                                    color: col.status_key === 'novo' ? 'var(--color-primary-light)' : 'var(--color-text-muted)'
+                                                }}
+                                            >
+                                                {col.status_key === 'novo' ? 'Fixado' : 'Livre'}
+                                            </span>
+                                        </div>
+
+                                        <div>
+                                            <input
+                                                className="form-input"
+                                                value={col.label}
+                                                onChange={e => setColumns(prev => prev.map(c => c.id === col.id ? { ...c, label: e.target.value } : c))}
+                                                onBlur={() => handleUpdateColumn(col, { label: col.label })}
+                                                style={{
+                                                    width: '100%',
+                                                    fontWeight: 600,
+                                                    background: 'var(--color-bg-tertiary)',
+                                                    border: '1px solid var(--color-border)'
+                                                }}
+                                                disabled={col.status_key === 'novo'}
+                                            />
+                                        </div>
+
+                                        <div style={{ fontFamily: 'monospace', fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>
+                                            {col.status_key}
+                                        </div>
+
+                                        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem', color: 'var(--color-text-secondary)' }}>
+                                            <input
+                                                type="checkbox"
+                                                checked={!!col.is_closed}
+                                                disabled={!!col.is_system || col.status_key === 'novo'}
+                                                onChange={e => handleUpdateColumn(col, { is_closed: e.target.checked })}
+                                            />
+                                            Encerrado
+                                        </label>
+
+                                        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                                            {!col.is_system && col.status_key !== 'novo' && (
+                                                <button className="btn btn-icon btn-ghost" onClick={() => handleDeleteColumn(col)} style={{ color: 'var(--color-error)' }} title="Excluir">
+                                                    <Trash2 size={16} />
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    <form onSubmit={handleAddColumn} className="card" style={{
+                        background: 'var(--color-bg-card)',
+                        border: '1px solid var(--color-border)',
+                        borderRadius: '16px',
+                        padding: '16px'
+                    }}>
+                        <h4 style={{ marginTop: 0 }}>Nova Coluna</h4>
+                        <div style={{ display: 'grid', gridTemplateColumns: '2fr 2fr 1fr', gap: 'var(--space-md)' }}>
+                            <div className="form-group">
+                                <label className="form-label">Nome</label>
+                                <input className="form-input" value={newLabel} onChange={e => setNewLabel(e.target.value)} />
+                            </div>
+                            <div className="form-group">
+                                <label className="form-label">Status (chave)</label>
+                                <input className="form-input" value={newStatusKey} onChange={e => setNewStatusKey(e.target.value)} placeholder="ex: aguardando_aprovacao" />
+                            </div>
+                            <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <input type="checkbox" checked={newClosed} onChange={e => setNewClosed(e.target.checked)} />
+                                <label className="form-label" style={{ margin: 0 }}>Finalizado</label>
+                            </div>
+                        </div>
+                        {error && <div className="alert alert-error">{error}</div>}
+                        <button type="submit" className="btn btn-primary" disabled={saving}>
+                            {saving ? <Loader2 size={16} className="spinning" /> : <Plus size={16} />}
+                            {saving ? ' Salvando...' : ' Adicionar'}
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+function EmailTab() {
+    const [mailboxes, setMailboxes] = useState([]);
+    const [areas, setAreas] = useState([]);
+    const [categories, setCategories] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [showModal, setShowModal] = useState(false);
+    const [editingMailbox, setEditingMailbox] = useState(null);
+    const [testingId, setTestingId] = useState(null);
+
+    useEffect(() => {
+        loadAll();
+    }, []);
+
+    async function loadAll() {
+        try {
+            setLoading(true);
+            const [mailData, areasData, categoriesData] = await Promise.all([
+                emailMailboxesAPI.list(),
+                areasAPI.list(),
+                categoriesAPI.list()
+            ]);
+            setMailboxes(mailData);
+            setAreas(areasData);
+            setCategories(categoriesData);
+        } catch (error) {
+            console.error('Error loading email config:', error);
+        } finally {
+            setLoading(false);
+        }
+    }
+
+    function openCreateModal() {
+        setEditingMailbox(null);
+        setShowModal(true);
+    }
+
+    function openEditModal(mailbox) {
+        setEditingMailbox(mailbox);
+        setShowModal(true);
+    }
+
+    async function handleDelete(id) {
+        if (!confirm('Remover esta caixa de email?')) return;
+        try {
+            await emailMailboxesAPI.remove(id);
+            loadAll();
+        } catch (error) {
+            console.error('Error deleting mailbox:', error);
+        }
+    }
+
+    async function handleTest(id) {
+        try {
+            setTestingId(id);
+            await emailMailboxesAPI.test(id);
+            loadAll();
+            alert('Conexão OK');
+        } catch (error) {
+            alert(error.message || 'Falha na conexão');
+        } finally {
+            setTestingId(null);
+        }
+    }
+
+    return (
+        <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-lg)' }}>
+                <h2 style={{ fontSize: '1.25rem', fontWeight: 600 }}>Conexão de Emails (IMAP)</h2>
+                <button className="btn btn-primary" onClick={openCreateModal}>
+                    <Plus size={16} /> Conectar Email
+                </button>
+            </div>
+
+            {loading ? (
+                <div className="loading"><div className="spinner"></div></div>
+            ) : mailboxes.length === 0 ? (
+                <div className="empty-state">
+                    <Mail size={48} style={{ color: 'var(--color-text-muted)' }} />
+                    <p>Nenhuma caixa conectada</p>
+                </div>
+            ) : (
+                <div className="card glass-panel">
+                    <table className="table">
+                        <thead>
+                            <tr>
+                                <th>Nome</th>
+                                <th>Servidor</th>
+                                <th>Usuário</th>
+                                <th>Status</th>
+                                <th>Última checagem</th>
+                                <th style={{ width: '160px' }}>Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {mailboxes.map(mb => (
+                                <tr key={mb.id}>
+                                    <td style={{ fontWeight: 500 }}>{mb.name}</td>
+                                    <td className="text-secondary">{mb.host}:{mb.port}</td>
+                                    <td className="text-secondary">{mb.username}</td>
+                                    <td>
+                                        <span className={`badge ${mb.status === 'error' ? 'badge-error' : 'badge-success'}`}>
+                                            {mb.status || 'idle'}
+                                        </span>
+                                        {mb.last_error && (
+                                            <div className="text-muted" style={{ fontSize: '0.7rem' }}>{mb.last_error}</div>
+                                        )}
+                                    </td>
+                                    <td className="text-muted">
+                                        {mb.last_checked_at ? new Date(mb.last_checked_at).toLocaleString('pt-BR') : '-'}
+                                    </td>
+                                    <td>
+                                        <div style={{ display: 'flex', gap: 'var(--space-xs)' }}>
+                                            <button className="btn btn-icon btn-ghost" onClick={() => handleTest(mb.id)} title="Testar">
+                                                {testingId === mb.id ? <Loader2 size={16} className="spinning" /> : <Check size={16} />}
+                                            </button>
+                                            <button className="btn btn-icon btn-ghost" onClick={() => openEditModal(mb)} title="Editar">
+                                                <Edit size={16} />
+                                            </button>
+                                            <button className="btn btn-icon btn-ghost" onClick={() => handleDelete(mb.id)} style={{ color: 'var(--color-error)' }} title="Excluir">
+                                                <Trash2 size={16} />
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            )}
+
+            {showModal && (
+                <EmailMailboxModal
+                    mailbox={editingMailbox}
+                    areas={areas}
+                    categories={categories}
+                    onClose={() => setShowModal(false)}
+                    onSave={() => { setShowModal(false); loadAll(); }}
+                />
+            )}
+        </div>
+    );
+}
+
+function EmailMailboxModal({ mailbox, areas, categories, onClose, onSave }) {
+    const [name, setName] = useState(mailbox?.name || '');
+    const [host, setHost] = useState(mailbox?.host || '');
+    const [port, setPort] = useState(mailbox?.port || 993);
+    const [secure, setSecure] = useState(mailbox ? !!mailbox.secure : true);
+    const [username, setUsername] = useState(mailbox?.username || '');
+    const [password, setPassword] = useState('');
+    const [folder, setFolder] = useState(mailbox?.folder || 'INBOX');
+    const [defaultAreaId, setDefaultAreaId] = useState(mailbox?.default_area_id || '');
+    const [allowedCategories, setAllowedCategories] = useState(() => {
+        if (!mailbox?.allowed_category_ids) return [];
+        try { return JSON.parse(mailbox.allowed_category_ids); } catch { return []; }
+    });
+    const [defaultImpact, setDefaultImpact] = useState(mailbox?.default_impact || 'medio');
+    const [enabled, setEnabled] = useState(mailbox ? !!mailbox.enabled : true);
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState(null);
+    const [showHelp, setShowHelp] = useState(false);
+
+    function toggleCategory(id) {
+        setAllowedCategories(prev => prev.includes(id) ? prev.filter(c => c !== id) : [...prev, id]);
+    }
+
+    async function handleSubmit(e) {
+        e.preventDefault();
+        setError(null);
+        if (!name || !host || !port || !username || (!mailbox && !password)) {
+            setError('Preencha os campos obrigatórios');
+            return;
+        }
+        try {
+            setLoading(true);
+            const payload = {
+                name,
+                host,
+                port: Number(port),
+                secure,
+                username,
+                password: password || undefined,
+                folder,
+                default_area_id: defaultAreaId || null,
+                allowed_category_ids: allowedCategories,
+                default_impact: defaultImpact,
+                enabled
+            };
+            if (mailbox) {
+                await emailMailboxesAPI.update(mailbox.id, payload);
+            } else {
+                await emailMailboxesAPI.create(payload);
+            }
+            onSave();
+        } catch (err) {
+            setError(err.message || 'Erro ao salvar');
+        } finally {
+            setLoading(false);
+        }
+    }
+
+    return (
+        <div className="modal-overlay" onClick={onClose}>
+            <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '720px' }}>
+                <div className="modal-header">
+                    <h3 className="modal-title">{mailbox ? 'Editar Email' : 'Conectar Email'}</h3>
+                    <button className="btn btn-icon btn-ghost" onClick={onClose}><X size={20} /></button>
+                </div>
+                <form onSubmit={handleSubmit} className="modal-body">
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 'var(--space-md)' }}>
+                        <button type="button" className="btn btn-ghost" onClick={() => setShowHelp(true)}>
+                            <AlertCircle size={16} />
+                            Ajuda para conectar
+                        </button>
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-md)' }}>
+                        <div className="form-group">
+                            <label className="form-label">Nome *</label>
+                            <input className="form-input" value={name} onChange={e => setName(e.target.value)} />
+                        </div>
+                        <div className="form-group">
+                            <label className="form-label">Pasta</label>
+                            <input className="form-input" value={folder} onChange={e => setFolder(e.target.value)} />
+                        </div>
+                        <div className="form-group">
+                            <label className="form-label">Servidor IMAP *</label>
+                            <input className="form-input" value={host} onChange={e => setHost(e.target.value)} placeholder="imap.seuprovedor.com" />
+                        </div>
+                        <div className="form-group">
+                            <label className="form-label">Porta *</label>
+                            <input className="form-input" type="number" value={port} onChange={e => setPort(e.target.value)} />
+                        </div>
+                        <div className="form-group">
+                            <label className="form-label">Usuário *</label>
+                            <input className="form-input" value={username} onChange={e => setUsername(e.target.value)} />
+                        </div>
+                        <div className="form-group">
+                            <label className="form-label">Senha {mailbox ? '(somente se quiser trocar)' : '*'}</label>
+                            <input className="form-input" type="password" value={password} onChange={e => setPassword(e.target.value)} />
+                        </div>
+                        <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <input type="checkbox" checked={secure} onChange={e => setSecure(e.target.checked)} />
+                            <label className="form-label" style={{ margin: 0 }}>SSL/TLS</label>
+                        </div>
+                        <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <input type="checkbox" checked={enabled} onChange={e => setEnabled(e.target.checked)} />
+                            <label className="form-label" style={{ margin: 0 }}>Ativo</label>
+                        </div>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-md)', marginTop: 'var(--space-md)' }}>
+                        <div className="form-group">
+                            <label className="form-label">Área padrão</label>
+                            <select className="form-input" value={defaultAreaId} onChange={e => setDefaultAreaId(e.target.value)}>
+                                <option value="">Selecionar</option>
+                                {areas.map(a => (
+                                    <option key={a.id} value={a.id}>{a.name}</option>
+                                ))}
+                            </select>
+                        </div>
+                        <div className="form-group">
+                            <label className="form-label">Impacto padrão</label>
+                            <select className="form-input" value={defaultImpact} onChange={e => setDefaultImpact(e.target.value)}>
+                                <option value="baixo">Baixo</option>
+                                <option value="medio">Médio</option>
+                                <option value="alto">Alto</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div className="form-group" style={{ marginTop: 'var(--space-md)' }}>
+                        <label className="form-label">Categorias permitidas</label>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px' }}>
+                            {categories.map(cat => (
+                                <label key={cat.id} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <input type="checkbox" checked={allowedCategories.includes(cat.id)} onChange={() => toggleCategory(cat.id)} />
+                                    <span>{cat.name}</span>
+                                </label>
+                            ))}
+                        </div>
+                    </div>
+
+                    {error && <div className="alert alert-error">{error}</div>}
+                    <button type="submit" className="btn btn-primary btn-lg" disabled={loading} style={{ width: '100%' }}>
+                        {loading ? <><Loader2 size={16} className="spinning" /> Salvando...</> : <><Check size={16} /> Salvar</>}
+                    </button>
+                </form>
+            </div>
+            {showHelp && (
+                <div className="modal-overlay" onClick={() => setShowHelp(false)}>
+                    <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '760px' }}>
+                        <div className="modal-header">
+                            <h3 className="modal-title">Ajuda para conectar IMAP</h3>
+                            <button className="btn btn-icon btn-ghost" onClick={() => setShowHelp(false)}><X size={20} /></button>
+                        </div>
+                        <div className="modal-body">
+                            <div className="card" style={{ marginBottom: 'var(--space-md)' }}>
+                                <h4 style={{ marginTop: 0 }}>Gmail (passo a passo completo)</h4>
+                                <ol style={{ paddingLeft: '20px', margin: 0 }}>
+                                    <li>Acesse o Gmail no navegador e clique na engrenagem.</li>
+                                    <li>Clique em "Ver todas as configurações".</li>
+                                    <li>Abra a aba "Encaminhamento e POP/IMAP".</li>
+                                    <li>Em "Acesso IMAP", selecione "Ativar IMAP" e salve.</li>
+                                    <li>Se sua conta usa verificação em 2 etapas, abra "Minha Conta Google" &gt; "Segurança".</li>
+                                    <li>Procure "Senhas de app" e crie uma senha para "E-mail".</li>
+                                    <li>Link direto: <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noreferrer">myaccount.google.com/apppasswords</a></li>
+                                    <li>Use estes dados aqui:
+                                        <div style={{ marginTop: '6px' }}>
+                                            <div><strong>Servidor:</strong> imap.gmail.com</div>
+                                            <div><strong>Porta:</strong> 993</div>
+                                            <div><strong>SSL/TLS:</strong> ativado</div>
+                                            <div><strong>Usuário:</strong> seu email completo</div>
+                                            <div><strong>Senha:</strong> senha de app (se tiver 2FA)</div>
+                                        </div>
+                                    </li>
+                                </ol>
+                                <div className="text-secondary" style={{ fontSize: '0.9rem', marginTop: '8px' }}>
+                                    Se não encontrar "Senhas de app", ative a verificação em duas etapas primeiro.
+                                </div>
+                            </div>
+                            <div className="card" style={{ marginBottom: 'var(--space-md)' }}>
+                                <h4 style={{ marginTop: 0 }}>Microsoft 365 / Outlook (passo a passo)</h4>
+                                <ol style={{ paddingLeft: '20px', margin: 0 }}>
+                                    <li>Acesse Outlook Web e abra Configurações (ícone de engrenagem).</li>
+                                    <li>Vá em "Exibir todas as configurações do Outlook".</li>
+                                    <li>Em "Email" &gt; "Sincronizar email", confirme que IMAP está permitido.</li>
+                                    <li>Se usar MFA, gere uma senha de app no portal da conta Microsoft.</li>
+                                    <li>Use estes dados:
+                                        <div style={{ marginTop: '6px' }}>
+                                            <div><strong>Servidor:</strong> outlook.office365.com</div>
+                                            <div><strong>Porta:</strong> 993</div>
+                                            <div><strong>SSL/TLS:</strong> ativado</div>
+                                            <div><strong>Usuário:</strong> seu email completo</div>
+                                            <div><strong>Senha:</strong> senha de app (se tiver 2FA)</div>
+                                        </div>
+                                    </li>
+                                </ol>
+                            </div>
+                            <div className="card" style={{ marginBottom: 'var(--space-md)' }}>
+                                <h4 style={{ marginTop: 0 }}>Zoho (passo a passo)</h4>
+                                <ol style={{ paddingLeft: '20px', margin: 0 }}>
+                                    <li>Entre no Zoho Mail e abra as configurações.</li>
+                                    <li>Vá em "Mail Accounts" e confirme que IMAP está habilitado.</li>
+                                    <li>Se houver MFA, crie uma senha de app no painel de segurança.</li>
+                                    <li>Use estes dados:
+                                        <div style={{ marginTop: '6px' }}>
+                                            <div><strong>Servidor:</strong> imap.zoho.com</div>
+                                            <div><strong>Porta:</strong> 993</div>
+                                            <div><strong>SSL/TLS:</strong> ativado</div>
+                                            <div><strong>Usuário:</strong> seu email completo</div>
+                                            <div><strong>Senha:</strong> senha de app (se tiver 2FA)</div>
+                                        </div>
+                                    </li>
+                                </ol>
+                            </div>
+                            <div className="card">
+                                <h4 style={{ marginTop: 0 }}>Genérico (passo a passo)</h4>
+                                <ol style={{ paddingLeft: '20px', margin: 0 }}>
+                                    <li>Abra o painel do provedor de email.</li>
+                                    <li>Procure por configurações de IMAP e habilite.</li>
+                                    <li>Se houver MFA, gere uma senha de app.</li>
+                                    <li>Use os dados do provedor. Normalmente IMAPS usa porta `993` com SSL.</li>
+                                </ol>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

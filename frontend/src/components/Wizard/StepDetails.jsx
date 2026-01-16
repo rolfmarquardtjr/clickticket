@@ -53,23 +53,35 @@ export default function StepDetails({
     return (
         <div className="animate-in fade-in slide-in-from-right-4 duration-500">
             <h3 className="wizard-title">
-                <Tag size={20} className="inline-block mr-2 mb-1" />
+                <Tag size={20} />
                 Detalhes da Solicitação
             </h3>
-            <p className="text-center text-sm text-gray-400 mb-4">
+            <p className="wizard-subtitle" style={{ marginBottom: '12px' }}>
                 Descreva o problema com o máximo de detalhes possível para agilizar o atendimento.
             </p>
 
-            <div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+            <div style={{
+                padding: '16px',
+                border: '1px solid var(--color-border)',
+                borderRadius: 'var(--radius-md)',
+                background: 'var(--color-bg-secondary)',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '14px'
+            }}>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5">
                     {/* Subcategory (Subject) */}
                     <div>
-                        <label className="form-label">
+                        <label className="form-label" style={{ marginBottom: '8px', display: 'block' }}>
                             Subcategoria (Assunto) <span className="text-error">*</span>
                         </label>
-                        <select
-                            value={subcategory || ''}
-                            onChange={(e) => onSubcategoryChange(e.target.value)}
+                    <select
+                            value={subcategory?.id || subcategory || ''}
+                            onChange={(e) => {
+                                const value = e.target.value;
+                                const selected = category?.subcategories?.find(sub => sub.id === value);
+                                onSubcategoryChange(selected || value);
+                            }}
                             className="form-input form-select"
                         >
                             <option value="">Selecione...</option>
@@ -84,15 +96,15 @@ export default function StepDetails({
                     </div>
 
                     {/* Impact */}
-                    <div>
-                        <label className="form-label">
+                    <div style={{ marginTop: '6px' }}>
+                        <label className="form-label" style={{ marginBottom: '8px', display: 'block' }}>
                             Impacto <span className="text-error">*</span>
                         </label>
-                        <div className="grid grid-cols-3 gap-2">
+                        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginTop: '2px' }}>
                             {[
-                                { value: 'baixo', label: 'Baixo' },
-                                { value: 'medio', label: 'Médio' },
-                                { value: 'alto', label: 'Alto' }
+                                { value: 'baixo', label: 'Baixo', color: 'var(--color-success)' },
+                                { value: 'medio', label: 'Médio', color: 'var(--color-warning)' },
+                                { value: 'alto', label: 'Alto', color: 'var(--color-error)' }
                             ].map(opt => (
                                 <button
                                     key={opt.value}
@@ -100,10 +112,22 @@ export default function StepDetails({
                                     onClick={() => onImpactChange(opt.value)}
                                     className={`btn ${impact === opt.value ? 'btn-primary' : 'btn-secondary'} px-2 py-2 text-sm`}
                                     style={{
+                                        minWidth: '92px',
                                         justifyContent: 'center',
-                                        border: impact === opt.value ? `1px solid var(--color-${opt.value === 'alto' ? 'error' : opt.value === 'medio' ? 'warning' : 'success'})` : undefined
+                                        border: impact === opt.value ? `1px solid ${opt.color}` : '1px solid var(--color-border)',
+                                        background: impact === opt.value ? `${opt.color}22` : 'var(--color-bg-tertiary)',
+                                        color: impact === opt.value ? opt.color : 'var(--color-text-secondary)',
+                                        boxShadow: impact === opt.value ? `0 0 0 2px ${opt.color}33` : 'none'
                                     }}
                                 >
+                                    <span style={{
+                                        width: '8px',
+                                        height: '8px',
+                                        borderRadius: '50%',
+                                        background: opt.color,
+                                        display: 'inline-block',
+                                        marginRight: '6px'
+                                    }} />
                                     {opt.label}
                                 </button>
                             ))}
@@ -112,8 +136,8 @@ export default function StepDetails({
                 </div>
 
                 {/* Description */}
-                <div className="form-group">
-                    <label className="form-label">
+                <div className="form-group" style={{ marginTop: '4px' }}>
+                    <label className="form-label" style={{ marginBottom: '6px', display: 'block' }}>
                         Descrição Detalhada <span className="text-error">*</span>
                     </label>
                     <textarea
@@ -122,12 +146,13 @@ export default function StepDetails({
                         className="form-input form-textarea"
                         placeholder="Explique o que aconteceu, mensagens de erro, etc..."
                         rows={4}
+                        style={{ marginTop: '0' }}
                     />
                 </div>
 
                 {/* Custom Fields Section */}
                 {customFields.length > 0 && (
-                    <div className="section-divider">
+                    <div className="section-divider" style={{ marginTop: '6px' }}>
                         <h4 className="section-title">
                             Informações Específicas ({customFields.length})
                         </h4>

@@ -90,7 +90,7 @@ export default function CreateTicket() {
                 client_id: client.id,
                 product_id: product?.id || null,
                 category: category.id,
-                subcategory: subcategory.id,
+                subcategory: subcategory?.id || subcategory,
                 impact,
                 description,
                 area_id: area.id
@@ -243,4 +243,3 @@ export default function CreateTicket() {
         </div>
     );
 }
-
