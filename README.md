@@ -1,0 +1,132 @@
+# CliqueTickets 🎫
+
+Sistema moderno de Gestão de Chamados (Service Desk) com foco em experiência do usuário (UX/UI), gestão visual (Kanban) e métricas em tempo real (SLA).
+
+O sistema foi desenvolvido para ser multi-tenancy (preparado para múltiplas organizações), seguro e altamente customizável.
+
+---
+
+## 🚀 Tecnologias Utilizadas
+
+### Frontend (SPA)
+- **React.js (Vite)**: Biblioteca principal para construção da interface.
+- **CSS Modules / Global CSS**: Estilização premium com tema escuro (Dark Mode) e suporte a Glassmorphism.
+- **Lucide React**: Biblioteca de ícones moderna e leve.
+- **React Router**: Navegação entre páginas.
+
+### Backend (API REST)
+- **Node.js + Express**: Servidor rápido e escalável.
+- **SQLite**: Banco de dados relacional (leve e em arquivo local para facilitar o deploy e desenvolvimento).
+- **JWT (JSON Web Tokens)**: Autenticação segura e gestão de sessão.
+- **Multer**: Gerenciamento de upload de arquivos (evidências/anexos).
+
+---
+
+## ✨ Funcionalidades Principais
+
+### 1. Dashboard Executivo & Operacional
+- **Cards de Métricas**: Visualização rápida de Tickets Ativos, Finalizados, e Status de SLA (OK, Risco, Estourado).
+- **Visão por Área**: Cards compactos mostrando o volume de tickets por departamento (Financeiro, Suporte, etc.) com indicadores de saúde (SLA).
+- **Fila Unificada**: Painel lateral para acesso rápido aos tickets da fila.
+
+### 2. Gestão Visual (Kanban)
+- **Drag & Drop**: Movimentação de tickets entre colunas (Novo -> Em Análise -> Execução -> etc.) com atualização automática de status.
+- **SLA Visual**: Badges coloridas indicando o tempo restante ou se o prazo já estourou.
+- **Filtros Avançados**: Filtragem por prioridade, responsável e texto.
+
+### 3. Wizard de Abertura de Tickets
+- **Passo a Passo (6 Etapas)**: Fluxo guiado para garantir o preenchimento correto.
+    1. **Origem**: Canal (Email, Tel, Chat) e Solicitante.
+    2. **Cliente**: Identificação do cliente (com flag VIP automática).
+    3. **Produto**: Seleção do produto afetado.
+    4. **Categoria**: Classificação do problema (Área -> Categoria -> Subcategoria).
+    5. **Detalhes**: Título, Descrição, Prioridade, Impacto e **Campos Personalizados**.
+    6. **Responsável**: Atribuição automática ou manual.
+
+### 4. Painel Administrativo
+- **Gestão de Produtos**: Cadastro de produtos e serviços suportados.
+- **Clientes e SLA**: Definição de políticas de SLA (prazos) por prioridade e perfil de cliente (VIP).
+- **Campos Personalizados**: Criação de campos dinâmicos (Texto, Número, Data, Lista) vinculados a Áreas específicas.
+- **Usuários**: Controle de acesso e permissões.
+
+### 5. Log de Atividades e Auditoria
+- Histórico completo de alterações em cada ticket (troca de status, novos comentários, anexos).
+- Quem fez o que e quando (Rastreabilidade).
+
+---
+
+## 🛠️ Instalação e Configuração
+
+### Pré-requisitos
+- **Node.js** (v18 ou superior) instalado.
+- **Git** instalado.
+
+### Passo a Passo
+
+#### 1. Clonar o Repositório
+```bash
+git clone https://github.com/rolfmarquardtjr/clickticket.git
+cd clickticket
+```
+
+#### 2. Configurar o Backend (Servidor)
+Abra um terminal na pasta raiz e navegue para a pasta `server`:
+```bash
+cd server
+npm install
+```
+
+Para rodar o servidor:
+```bash
+npm start
+# O servidor rodará na porta 3001 (http://localhost:3001)
+# O banco de dados (database.sqlite) será criado automaticamente na primeira execução.
+```
+
+#### 3. Configurar o Frontend (Interface)
+Abra **outro terminal** na pasta raiz e navegue para a pasta `frontend`:
+```bash
+cd frontend
+npm install
+```
+
+Para rodar a interface:
+```bash
+npm run dev
+# A aplicação abrirá geralmente na porta 5173 (http://localhost:5173)
+```
+
+---
+
+## 📂 Estrutura do Projeto
+
+### `/server` (Backend)
+- **`index.js`**: Ponto de entrada da API. Configura rotas e middleware.
+- **`database.js`**: Configuração do SQLite e scripts de criação de tabelas (Migrations simplificadas).
+- **`auth.js`**: Lógica de login e verificação de token JWT.
+- **`slaEngine.js`**: Motor de cálculo de prazos e horas úteis.
+- **`routes/`**: Controladores de cada entidade (tickets, reports, users, etc.).
+- **`uploads/`**: Pasta onde os anexos dos tickets são salvos.
+
+### `/frontend` (Frontend)
+- **`src/api/`**: Camada de serviço para comunicação com o Backend.
+- **`src/components/`**: Componentes reutilizáveis (Wizard, Kanban, Modais, Cards).
+- **`src/pages/`**: Páginas principais (Dashboard, Admin, Login).
+- **`src/context/`**: Gerenciamento de estado global (Autenticação).
+- **`src/index.css`**: Variáveis CSS globais, tokens de design e temas.
+
+---
+
+## 🔐 Segurança e Multi-tenancy
+
+O sistema utiliza um modelo de **Organization ID (`org_id`)**.
+- Todo dado (ticket, cliente, produto) pertence a uma Organização.
+- O Token JWT do usuário contém o `org_id` dele.
+- O Backend filtra **automaticamente** todas as consultas SQL usando esse `org_id`, garantindo que um cliente nunca veja dados de outro.
+
+---
+
+## 📝 Próximos Passos (Backlog)
+- [ ] Implementar notificações em tempo real (WebSockets).
+- [ ] Integração com WhatsApp/Email para abertura automática.
+- [ ] Dashboards customizáveis pelo usuário.
