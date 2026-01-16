@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { MessageSquare, Send, User, Clock, Loader2, Lock, Globe, Wrench, FileText, Image, Paperclip, ArrowRight } from 'lucide-react';
-import { commentsAPI, attachmentsAPI } from '../api';
+import { commentsAPI, attachmentsAPI, ticketsAPI } from '../api';
 import { useAuth } from '../context/AuthContext';
 
 const COMMENT_TYPES = {
@@ -9,21 +9,32 @@ const COMMENT_TYPES = {
     action: { label: 'Ação Realizada', icon: Wrench, color: 'var(--color-primary)' }
 };
 
-export default function ActivityLog({ ticketId, lastUpdate }) {
+export default function ActivityLog({ ticketId, lastUpdate, ticket }) {
     const { user } = useAuth();
     const [comments, setComments] = useState([]);
     const [loading, setLoading] = useState(true);
     const [submitting, setSubmitting] = useState(false);
     const [newComment, setNewComment] = useState('');
     const [commentType, setCommentType] = useState('internal');
+    const [sendByEmail, setSendByEmail] = useState(false);
     const [error, setError] = useState(null);
     const [uploading, setUploading] = useState(false);
     const commentsEndRef = useRef(null);
     const fileInputRef = useRef(null);
+    const canEmail = ticket?.origin_channel === 'email' && ticket?.email_mailbox_id;
+    const replyTo = ticket?.email_reply_to || ticket?.email_from || ticket?.origin_contact;
 
     useEffect(() => {
         loadComments();
     }, [ticketId, lastUpdate]);
+
+    useEffect(() => {
+        if (commentType === 'public') {
+            setSendByEmail(!!canEmail);
+        } else {
+            setSendByEmail(false);
+        }
+    }, [commentType, canEmail]);
 
     async function loadComments() {
         try {
@@ -44,7 +55,11 @@ export default function ActivityLog({ ticketId, lastUpdate }) {
         try {
             setSubmitting(true);
             setError(null);
-            await commentsAPI.create(ticketId, newComment.trim(), commentType);
+            if (commentType === 'public' && sendByEmail) {
+                await ticketsAPI.replyByEmail(ticketId, newComment.trim());
+            } else {
+                await commentsAPI.create(ticketId, newComment.trim(), commentType);
+            }
             setNewComment('');
             await loadComments();
             // Scroll to bottom
@@ -332,6 +347,35 @@ export default function ActivityLog({ ticketId, lastUpdate }) {
                         );
                     })}
                 </div>
+
+                {commentType === 'public' && (
+                    <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: 'var(--space-sm)',
+                        marginBottom: 'var(--space-sm)',
+                        padding: '8px 12px',
+                        borderRadius: '8px',
+                        background: 'var(--color-bg-tertiary)',
+                        border: '1px solid var(--color-border)',
+                        fontSize: '0.8rem'
+                    }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--color-text-secondary)' }}>
+                            <input
+                                type="checkbox"
+                                checked={sendByEmail}
+                                onChange={e => setSendByEmail(e.target.checked)}
+                                disabled={!canEmail}
+                                style={{ width: '16px', height: '16px', accentColor: 'var(--color-success)' }}
+                            />
+                            Enviar por e-mail
+                        </label>
+                        <div style={{ color: canEmail ? 'var(--color-text-muted)' : 'var(--color-error)' }}>
+                            {canEmail ? `Para: ${replyTo || 'cliente'}` : 'E-mail de origem não configurado'}
+                        </div>
+                    </div>
+                )}
 
                 {/* Input */}
                 <div style={{ display: 'flex', gap: 'var(--space-sm)' }}>

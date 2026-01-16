@@ -1671,6 +1671,13 @@ function EmailMailboxModal({ mailbox, areas, categories, onClose, onSave }) {
     const [username, setUsername] = useState(mailbox?.username || '');
     const [password, setPassword] = useState('');
     const [folder, setFolder] = useState(mailbox?.folder || 'INBOX');
+    const [smtpHost, setSmtpHost] = useState(mailbox?.smtp_host || '');
+    const [smtpPort, setSmtpPort] = useState(mailbox?.smtp_port || 465);
+    const [smtpSecure, setSmtpSecure] = useState(mailbox?.smtp_secure !== undefined ? !!mailbox.smtp_secure : true);
+    const [smtpUsername, setSmtpUsername] = useState(mailbox?.smtp_username || '');
+    const [smtpPassword, setSmtpPassword] = useState('');
+    const [smtpFromName, setSmtpFromName] = useState(mailbox?.smtp_from_name || '');
+    const [smtpFromEmail, setSmtpFromEmail] = useState(mailbox?.smtp_from_email || '');
     const [defaultAreaId, setDefaultAreaId] = useState(mailbox?.default_area_id || '');
     const [allowedCategories, setAllowedCategories] = useState(() => {
         if (!mailbox?.allowed_category_ids) return [];
@@ -1703,6 +1710,13 @@ function EmailMailboxModal({ mailbox, areas, categories, onClose, onSave }) {
                 username,
                 password: password || undefined,
                 folder,
+                smtp_host: smtpHost || null,
+                smtp_port: smtpPort ? Number(smtpPort) : null,
+                smtp_secure: smtpSecure,
+                smtp_username: smtpUsername || null,
+                smtp_password: smtpPassword || undefined,
+                smtp_from_name: smtpFromName || null,
+                smtp_from_email: smtpFromEmail || null,
                 default_area_id: defaultAreaId || null,
                 allowed_category_ids: allowedCategories,
                 default_impact: defaultImpact,
@@ -1770,6 +1784,43 @@ function EmailMailboxModal({ mailbox, areas, categories, onClose, onSave }) {
                         </div>
                     </div>
 
+                    <div style={{ marginTop: 'var(--space-md)', fontSize: '0.85rem', color: 'var(--color-text-muted)', fontWeight: 600 }}>
+                        SMTP (Envio de e-mails)
+                        <div style={{ fontWeight: 400, fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: '4px' }}>
+                            Necessário para responder e-mails direto pelo ticket.
+                        </div>
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-md)', marginTop: 'var(--space-sm)' }}>
+                        <div className="form-group">
+                            <label className="form-label">Servidor SMTP</label>
+                            <input className="form-input" value={smtpHost} onChange={e => setSmtpHost(e.target.value)} placeholder="smtp.seuprovedor.com" />
+                        </div>
+                        <div className="form-group">
+                            <label className="form-label">Porta SMTP</label>
+                            <input className="form-input" type="number" value={smtpPort} onChange={e => setSmtpPort(e.target.value)} />
+                        </div>
+                        <div className="form-group">
+                            <label className="form-label">Usuário SMTP</label>
+                            <input className="form-input" value={smtpUsername} onChange={e => setSmtpUsername(e.target.value)} placeholder="seu email completo" />
+                        </div>
+                        <div className="form-group">
+                            <label className="form-label">Senha SMTP {mailbox ? '(somente se quiser trocar)' : ''}</label>
+                            <input className="form-input" type="password" value={smtpPassword} onChange={e => setSmtpPassword(e.target.value)} />
+                        </div>
+                        <div className="form-group">
+                            <label className="form-label">Nome de Remetente</label>
+                            <input className="form-input" value={smtpFromName} onChange={e => setSmtpFromName(e.target.value)} placeholder="Suporte" />
+                        </div>
+                        <div className="form-group">
+                            <label className="form-label">E-mail de Remetente</label>
+                            <input className="form-input" value={smtpFromEmail} onChange={e => setSmtpFromEmail(e.target.value)} placeholder="suporte@empresa.com" />
+                        </div>
+                        <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <input type="checkbox" checked={smtpSecure} onChange={e => setSmtpSecure(e.target.checked)} />
+                            <label className="form-label" style={{ margin: 0 }}>SSL/TLS (SMTP)</label>
+                        </div>
+                    </div>
+
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-md)', marginTop: 'var(--space-md)' }}>
                         <div className="form-group">
                             <label className="form-label">Área padrão</label>
@@ -1833,6 +1884,7 @@ function EmailMailboxModal({ mailbox, areas, categories, onClose, onSave }) {
                                             <div><strong>SSL/TLS:</strong> ativado</div>
                                             <div><strong>Usuário:</strong> seu email completo</div>
                                             <div><strong>Senha:</strong> senha de app (se tiver 2FA)</div>
+                                            <div style={{ marginTop: '6px' }}><strong>SMTP:</strong> smtp.gmail.com (porta 465, SSL/TLS)</div>
                                         </div>
                                     </li>
                                 </ol>
@@ -1854,6 +1906,7 @@ function EmailMailboxModal({ mailbox, areas, categories, onClose, onSave }) {
                                             <div><strong>SSL/TLS:</strong> ativado</div>
                                             <div><strong>Usuário:</strong> seu email completo</div>
                                             <div><strong>Senha:</strong> senha de app (se tiver 2FA)</div>
+                                            <div style={{ marginTop: '6px' }}><strong>SMTP:</strong> smtp.office365.com (porta 587, STARTTLS)</div>
                                         </div>
                                     </li>
                                 </ol>
@@ -1871,6 +1924,7 @@ function EmailMailboxModal({ mailbox, areas, categories, onClose, onSave }) {
                                             <div><strong>SSL/TLS:</strong> ativado</div>
                                             <div><strong>Usuário:</strong> seu email completo</div>
                                             <div><strong>Senha:</strong> senha de app (se tiver 2FA)</div>
+                                            <div style={{ marginTop: '6px' }}><strong>SMTP:</strong> smtp.zoho.com (porta 465, SSL/TLS)</div>
                                         </div>
                                     </li>
                                 </ol>
@@ -1882,6 +1936,7 @@ function EmailMailboxModal({ mailbox, areas, categories, onClose, onSave }) {
                                     <li>Procure por configurações de IMAP e habilite.</li>
                                     <li>Se houver MFA, gere uma senha de app.</li>
                                     <li>Use os dados do provedor. Normalmente IMAPS usa porta `993` com SSL.</li>
+                                    <li>Para envio, use o SMTP do provedor (porta 465 SSL ou 587 STARTTLS).</li>
                                 </ol>
                             </div>
                         </div>

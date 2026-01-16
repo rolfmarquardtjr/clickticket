@@ -32,8 +32,9 @@ router.get('/email-mailboxes', (req, res) => {
   if (!user) return;
   try {
     const mailboxes = getAll(`
-      SELECT id, org_id, name, host, port, secure, username, folder, default_area_id,
-             allowed_category_ids, default_impact, enabled, last_checked_at, status, last_error, created_at, updated_at
+      SELECT id, org_id, name, host, port, secure, username, folder,
+             smtp_host, smtp_port, smtp_secure, smtp_username, smtp_from_name, smtp_from_email,
+             default_area_id, allowed_category_ids, default_impact, enabled, last_checked_at, status, last_error, created_at, updated_at
       FROM email_mailboxes
       WHERE org_id = '${user.orgId}'
       ORDER BY created_at DESC
@@ -51,6 +52,7 @@ router.post('/email-mailboxes', (req, res) => {
   try {
     const {
       name, host, port, secure, username, password, folder,
+      smtp_host, smtp_port, smtp_secure, smtp_username, smtp_password, smtp_from_name, smtp_from_email,
       default_area_id, allowed_category_ids, default_impact, enabled
     } = req.body;
 
@@ -62,11 +64,19 @@ router.post('/email-mailboxes', (req, res) => {
     run(`
       INSERT INTO email_mailboxes (
         id, org_id, name, host, port, secure, username, password, folder,
+        smtp_host, smtp_port, smtp_secure, smtp_username, smtp_password, smtp_from_name, smtp_from_email,
         default_area_id, allowed_category_ids, default_impact, enabled
       ) VALUES (
         '${id}', '${user.orgId}', '${name.replace(/'/g, "''")}', '${host.replace(/'/g, "''")}',
         ${Number(port)}, ${secure ? 1 : 0}, '${username.replace(/'/g, "''")}', '${password.replace(/'/g, "''")}',
         ${folder ? `'${folder.replace(/'/g, "''")}'` : "'INBOX'"},
+        ${smtp_host ? `'${smtp_host.replace(/'/g, "''")}'` : 'NULL'},
+        ${smtp_port ? Number(smtp_port) : 'NULL'},
+        ${smtp_secure !== undefined ? (smtp_secure ? 1 : 0) : 1},
+        ${smtp_username ? `'${smtp_username.replace(/'/g, "''")}'` : 'NULL'},
+        ${smtp_password ? `'${smtp_password.replace(/'/g, "''")}'` : 'NULL'},
+        ${smtp_from_name ? `'${smtp_from_name.replace(/'/g, "''")}'` : 'NULL'},
+        ${smtp_from_email ? `'${smtp_from_email.replace(/'/g, "''")}'` : 'NULL'},
         ${default_area_id ? `'${default_area_id}'` : 'NULL'},
         ${allowed_category_ids ? `'${JSON.stringify(allowed_category_ids)}'` : 'NULL'},
         '${default_impact || 'medio'}',
@@ -92,6 +102,7 @@ router.put('/email-mailboxes/:id', (req, res) => {
 
     const {
       name, host, port, secure, username, password, folder,
+      smtp_host, smtp_port, smtp_secure, smtp_username, smtp_password, smtp_from_name, smtp_from_email,
       default_area_id, allowed_category_ids, default_impact, enabled
     } = req.body;
 
@@ -103,6 +114,14 @@ router.put('/email-mailboxes/:id', (req, res) => {
     if (username !== undefined) updates.push(`username = '${username.replace(/'/g, "''")}'`);
     if (password !== undefined && password !== '') updates.push(`password = '${password.replace(/'/g, "''")}'`);
     if (folder !== undefined) updates.push(`folder = '${folder.replace(/'/g, "''")}'`);
+    if (smtp_host !== undefined) updates.push(`smtp_host = ${smtp_host ? `'${smtp_host.replace(/'/g, "''")}'` : 'NULL'}`);
+    if (smtp_port !== undefined) updates.push(`smtp_port = ${smtp_port ? Number(smtp_port) : 'NULL'}`);
+    if (smtp_secure !== undefined) updates.push(`smtp_secure = ${smtp_secure ? 1 : 0}`);
+    if (smtp_username !== undefined) updates.push(`smtp_username = ${smtp_username ? `'${smtp_username.replace(/'/g, "''")}'` : 'NULL'}`);
+    if (smtp_password !== undefined && smtp_password !== '') updates.push(`smtp_password = '${smtp_password.replace(/'/g, "''")}'`);
+    if (smtp_password === '') updates.push(`smtp_password = NULL`);
+    if (smtp_from_name !== undefined) updates.push(`smtp_from_name = ${smtp_from_name ? `'${smtp_from_name.replace(/'/g, "''")}'` : 'NULL'}`);
+    if (smtp_from_email !== undefined) updates.push(`smtp_from_email = ${smtp_from_email ? `'${smtp_from_email.replace(/'/g, "''")}'` : 'NULL'}`);
     if (default_area_id !== undefined) updates.push(`default_area_id = ${default_area_id ? `'${default_area_id}'` : 'NULL'}`);
     if (allowed_category_ids !== undefined) updates.push(`allowed_category_ids = ${allowed_category_ids ? `'${JSON.stringify(allowed_category_ids)}'` : 'NULL'}`);
     if (default_impact !== undefined) updates.push(`default_impact = '${default_impact}'`);

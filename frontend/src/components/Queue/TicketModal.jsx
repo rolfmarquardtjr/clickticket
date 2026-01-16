@@ -48,6 +48,7 @@ export default function TicketModal({ ticket, onClose, onUpdate, onDelete, statu
     const { user, getAuthHeaders } = useAuth();
 
     const category = getCategoryById(ticket.category);
+    const subcategoryName = category?.subcategories?.find(sub => sub.id === ticket.subcategory)?.name;
     const getStatusLabel = (status) => statusMeta?.[status]?.label || STATUS_LABELS[status] || status;
     const getStatusColor = (status) => statusMeta?.[status]?.color || STATUS_COLORS[status] || '#666';
 
@@ -332,7 +333,7 @@ export default function TicketModal({ ticket, onClose, onUpdate, onDelete, statu
                                         </div>
                                         <div>
                                             <div className="text-secondary" style={{ fontSize: '0.75rem' }}>Subcategoria</div>
-                                            <div style={{ fontWeight: 600 }}>{ticket.subcategory?.replace(/_/g, ' ')}</div>
+                                            <div style={{ fontWeight: 600 }}>{subcategoryName || ticket.subcategory?.replace(/_/g, ' ')}</div>
                                         </div>
                                     </div>
 
@@ -400,7 +401,7 @@ export default function TicketModal({ ticket, onClose, onUpdate, onDelete, statu
 
                         {/* ACTIVITY TAB */}
                         {activeTab === 'activity' && (
-                            <ActivityLog ticketId={ticket.id} lastUpdate={ticket.updated_at} />
+                            <ActivityLog ticketId={ticket.id} lastUpdate={ticket.updated_at} ticket={ticket} />
                         )}
 
                         {/* HISTORY TAB */}

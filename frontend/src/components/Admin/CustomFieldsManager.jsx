@@ -31,7 +31,7 @@ export default function CustomFieldsManager() {
         try {
             setLoading(true);
             const [fieldsData, categoriesData, areasData] = await Promise.all([
-                customFieldsAPI.list(),
+                customFieldsAPI.list({ active: true }),
                 categoriesAPI.list(),
                 areasAPI.list()
             ]);

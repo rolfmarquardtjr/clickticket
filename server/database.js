@@ -109,6 +109,14 @@ async function initDatabase() {
       origin_channel TEXT NOT NULL DEFAULT 'portal',
       origin_contact TEXT,
       origin_reference TEXT,
+
+      -- Email threading (when created via IMAP)
+      email_mailbox_id TEXT,
+      email_message_id TEXT,
+      email_subject TEXT,
+      email_from TEXT,
+      email_reply_to TEXT,
+      email_references TEXT,
       
       -- Assignment
       created_by TEXT,
@@ -125,7 +133,8 @@ async function initDatabase() {
       FOREIGN KEY (client_id) REFERENCES clients(id),
       FOREIGN KEY (area_id) REFERENCES areas(id),
       FOREIGN KEY (created_by) REFERENCES users(id),
-      FOREIGN KEY (assigned_to) REFERENCES users(id)
+      FOREIGN KEY (assigned_to) REFERENCES users(id),
+      FOREIGN KEY (email_mailbox_id) REFERENCES email_mailboxes(id)
     );
   `);
 
@@ -347,6 +356,13 @@ async function initDatabase() {
       username TEXT NOT NULL,
       password TEXT NOT NULL,
       folder TEXT DEFAULT 'INBOX',
+      smtp_host TEXT,
+      smtp_port INTEGER,
+      smtp_secure INTEGER DEFAULT 1,
+      smtp_username TEXT,
+      smtp_password TEXT,
+      smtp_from_name TEXT,
+      smtp_from_email TEXT,
       default_area_id TEXT,
       allowed_category_ids TEXT,
       default_impact TEXT DEFAULT 'medio',
@@ -383,6 +399,24 @@ async function initDatabase() {
   `);
 
   // ============================================
+  // Email Send Logs (outbound replies)
+  // ============================================
+  db.run(`
+    CREATE TABLE IF NOT EXISTS email_send_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      ticket_id TEXT NOT NULL,
+      mailbox_id TEXT NOT NULL,
+      to_email TEXT NOT NULL,
+      subject TEXT,
+      status TEXT DEFAULT 'sent',
+      error TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (ticket_id) REFERENCES tickets(id),
+      FOREIGN KEY (mailbox_id) REFERENCES email_mailboxes(id)
+    );
+  `);
+
+  // ============================================
   // Add missing columns to existing tables (migrations)
   // ============================================
   try {
@@ -407,6 +441,30 @@ async function initDatabase() {
 
   try {
     db.run('ALTER TABLE tickets ADD COLUMN origin_reference TEXT');
+  } catch (e) { /* column may already exist */ }
+
+  try {
+    db.run('ALTER TABLE tickets ADD COLUMN email_mailbox_id TEXT');
+  } catch (e) { /* column may already exist */ }
+
+  try {
+    db.run('ALTER TABLE tickets ADD COLUMN email_message_id TEXT');
+  } catch (e) { /* column may already exist */ }
+
+  try {
+    db.run('ALTER TABLE tickets ADD COLUMN email_subject TEXT');
+  } catch (e) { /* column may already exist */ }
+
+  try {
+    db.run('ALTER TABLE tickets ADD COLUMN email_from TEXT');
+  } catch (e) { /* column may already exist */ }
+
+  try {
+    db.run('ALTER TABLE tickets ADD COLUMN email_reply_to TEXT');
+  } catch (e) { /* column may already exist */ }
+
+  try {
+    db.run('ALTER TABLE tickets ADD COLUMN email_references TEXT');
   } catch (e) { /* column may already exist */ }
 
   try {
@@ -464,6 +522,34 @@ async function initDatabase() {
 
   try {
     db.run('ALTER TABLE tickets ADD COLUMN custom_data TEXT');
+  } catch (e) { /* column may already exist */ }
+
+  try {
+    db.run('ALTER TABLE email_mailboxes ADD COLUMN smtp_host TEXT');
+  } catch (e) { /* column may already exist */ }
+
+  try {
+    db.run('ALTER TABLE email_mailboxes ADD COLUMN smtp_port INTEGER');
+  } catch (e) { /* column may already exist */ }
+
+  try {
+    db.run('ALTER TABLE email_mailboxes ADD COLUMN smtp_secure INTEGER DEFAULT 1');
+  } catch (e) { /* column may already exist */ }
+
+  try {
+    db.run('ALTER TABLE email_mailboxes ADD COLUMN smtp_username TEXT');
+  } catch (e) { /* column may already exist */ }
+
+  try {
+    db.run('ALTER TABLE email_mailboxes ADD COLUMN smtp_password TEXT');
+  } catch (e) { /* column may already exist */ }
+
+  try {
+    db.run('ALTER TABLE email_mailboxes ADD COLUMN smtp_from_name TEXT');
+  } catch (e) { /* column may already exist */ }
+
+  try {
+    db.run('ALTER TABLE email_mailboxes ADD COLUMN smtp_from_email TEXT');
   } catch (e) { /* column may already exist */ }
 
   // ============================================
@@ -568,6 +654,41 @@ async function initDatabase() {
       }
     }
 
+  }
+
+  // ============================================
+  // Seed demo categories into orgs (fill missing)
+  // ============================================
+  const orgRows = resultToObjects(db.exec('SELECT id FROM organizations'));
+  const demoCategories = resultToObjects(db.exec(
+    `SELECT * FROM categories WHERE org_id = 'org-demo' AND active = 1 ORDER BY sort_order`
+  ));
+  for (const org of orgRows) {
+    if (org.id === 'org-demo') continue;
+
+    for (const cat of demoCategories) {
+      const existing = getOne(
+        `SELECT id FROM categories WHERE org_id = '${org.id}' AND name = '${cat.name.replace(/'/g, "''")}' AND active = 1`
+      );
+      if (existing) continue;
+
+      const newCatId = `${cat.id}-${org.id}`;
+      db.run(`
+        INSERT INTO categories (id, org_id, name, icon, color, default_area_id, sort_order, active, created_at)
+        VALUES ('${newCatId}', '${org.id}', '${cat.name}', '${cat.icon}', '${cat.color}', NULL, ${cat.sort_order}, ${cat.active}, '${cat.created_at}')
+      `);
+
+      const demoSubs = resultToObjects(db.exec(
+        `SELECT * FROM subcategories WHERE category_id = '${cat.id}' AND active = 1 ORDER BY sort_order`
+      ));
+      for (const sub of demoSubs) {
+        const newSubId = `${sub.id}-${org.id}`;
+        db.run(`
+          INSERT INTO subcategories (id, category_id, name, sort_order, active, created_at)
+          VALUES ('${newSubId}', '${newCatId}', '${sub.name}', ${sub.sort_order}, ${sub.active}, '${sub.created_at}')
+        `);
+      }
+    }
   }
 
   // Save database

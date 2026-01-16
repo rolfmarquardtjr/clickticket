@@ -62,6 +62,11 @@ export const ticketsAPI = {
         body: JSON.stringify({ area_id: areaId, notes, attachment_ids: attachmentIds }),
         headers: authHeaders
     }),
+    replyByEmail: (id, content, subject = null, authHeaders = {}) => fetchAPI(`/tickets/${id}/email-reply`, {
+        method: 'POST',
+        body: JSON.stringify({ content, subject }),
+        headers: authHeaders
+    }),
 
     getCategories: () => fetchAPI('/tickets/categories/list'),
 

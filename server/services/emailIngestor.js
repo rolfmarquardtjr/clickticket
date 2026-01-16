@@ -180,6 +180,12 @@ function createTicketFromEmail({ mailbox, parsed, classification, orgId }) {
   }
   const fromEmail = parsed.from?.value?.[0]?.address || '';
   const fromName = parsed.from?.value?.[0]?.name || parsed.from?.text || '';
+  const replyToEmail = parsed.replyTo?.value?.[0]?.address || fromEmail;
+  const subject = parsed.subject || '';
+  const referenceParts = [];
+  if (Array.isArray(parsed.references)) referenceParts.push(...parsed.references);
+  if (parsed.inReplyTo) referenceParts.push(parsed.inReplyTo);
+  const emailReferences = Array.from(new Set(referenceParts)).join(' ').trim();
   const clientId = getOrCreateClient(fromEmail, fromName, orgId);
   const id = `ticket-${uuidv4().slice(0, 8)}`;
   const now = new Date().toISOString();
@@ -191,12 +197,15 @@ function createTicketFromEmail({ mailbox, parsed, classification, orgId }) {
     INSERT INTO tickets (
       id, org_id, client_id, category, subcategory, description, impact, area_id,
       status, sla_deadline, origin_channel, origin_contact, origin_reference,
-      created_by, created_at, updated_at, custom_data
+      created_by, created_at, updated_at, custom_data,
+      email_mailbox_id, email_message_id, email_subject, email_from, email_reply_to, email_references
     ) VALUES (
       '${id}', '${orgId}', '${clientId}', '${classification.category_id}', '${classification.subcategory_id}',
       '${description}', '${classification.impact}', '${classification.area_id}',
       'novo', '${slaDeadline}', 'email', '${parsed.from?.text?.replace(/'/g, "''") || ''}', '${parsed.messageId || ''}',
-      NULL, '${now}', '${now}', '${JSON.stringify({ summary })}'
+      NULL, '${now}', '${now}', '${JSON.stringify({ summary })}',
+      '${mailbox.id}', '${parsed.messageId || ''}', '${subject.replace(/'/g, "''")}',
+      '${fromEmail.replace(/'/g, "''")}', '${replyToEmail.replace(/'/g, "''")}', '${emailReferences.replace(/'/g, "''")}'
     )
   `);
 

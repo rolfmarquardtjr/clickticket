@@ -168,7 +168,7 @@ export default function CreateTicket() {
                         onImpactChange={setImpact}
                         description={description}
                         onDescriptionChange={setDescription}
-                        onDescriptionChange={setDescription}
+
                         attachments={attachments}
                         onAttachmentsChange={setAttachments}
                         customData={customData}

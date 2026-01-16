@@ -5,6 +5,7 @@ import { validateTransition, getAvailableActions, STATUS } from '../statusMachin
 import { calculateDeadline, enrichTicketWithSLA } from '../slaEngine.js';
 import { getCategoryById, CATEGORIES, ORIGIN_CHANNELS, validateOriginChannel } from '../categories.js';
 import { verifyToken } from '../auth.js';
+import { sendEmailReply } from '../services/emailSender.js';
 
 const router = Router();
 
@@ -562,19 +563,23 @@ router.patch('/:id/transfer', (req, res) => {
         // Update area, reset status to NOVO, CLEAR assignment, and Update Custom Data
         run(`UPDATE tickets SET area_id = '${area_id}', status = '${STATUS.NOVO}', assigned_to = NULL, updated_at = '${now}', custom_data = '${customDataJson}' WHERE id = '${ticketId}'`);
 
-        // Generate history ID for linking attachments
-        const historyId = uuidv4();
-
-        // Record in history with explicit ID
+        // Record in history (auto-increment ID)
         run(`
-      INSERT INTO status_history (id, ticket_id, from_status, to_status, changed_by, changed_at, notes)
-      VALUES ('${historyId}', '${ticketId}', '${ticket.status}', '${STATUS.NOVO}', ${userId ? `'${userId}'` : 'NULL'}, '${now}', '${historyNotes}')
+      INSERT INTO status_history (ticket_id, from_status, to_status, changed_by, changed_at, notes)
+      VALUES ('${ticketId}', '${ticket.status}', '${STATUS.NOVO}', ${userId ? `'${userId}'` : 'NULL'}, '${now}', '${historyNotes}')
+    `);
+
+        const historyRecord = getOne(`
+      SELECT id FROM status_history
+      WHERE ticket_id = '${ticketId}'
+      ORDER BY id DESC
+      LIMIT 1
     `);
 
         // Link attachments to this history record
-        if (attachment_ids && attachment_ids.length > 0) {
+        if (historyRecord && attachment_ids && attachment_ids.length > 0) {
             for (const attId of attachment_ids) {
-                run(`UPDATE attachments SET status_history_id = '${historyId}' WHERE id = '${attId}'`);
+                run(`UPDATE attachments SET status_history_id = ${historyRecord.id} WHERE id = '${attId}'`);
             }
         }
 
@@ -604,6 +609,122 @@ router.patch('/:id/transfer', (req, res) => {
     } catch (error) {
         console.error('Error transferring ticket:', error);
         res.status(500).json({ error: 'Erro ao transferir ticket' });
+    }
+});
+
+// POST /api/tickets/:id/email-reply - Send email reply and log as public comment
+router.post('/:id/email-reply', async (req, res) => {
+    try {
+        const authHeader = req.headers.authorization;
+        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+            return res.status(401).json({ error: 'Não autenticado' });
+        }
+
+        const token = authHeader.substring(7);
+        const decoded = verifyToken(token);
+        if (!decoded) {
+            return res.status(401).json({ error: 'Não autenticado' });
+        }
+
+        const ticketId = req.params.id;
+        const { content, subject } = req.body;
+
+        if (!content || content.trim().length < 3) {
+            return res.status(400).json({ error: 'A resposta deve ter pelo menos 3 caracteres' });
+        }
+
+        const ticket = getOne(`SELECT * FROM tickets WHERE id = '${ticketId}'`);
+        if (!ticket) {
+            return res.status(404).json({ error: 'Ticket não encontrado' });
+        }
+
+        if (ticket.org_id && ticket.org_id !== decoded.orgId) {
+            return res.status(403).json({ error: 'Sem permissão para este ticket' });
+        }
+
+        if (ticket.origin_channel !== 'email' || !ticket.email_mailbox_id) {
+            return res.status(400).json({ error: 'Este ticket não permite resposta por e-mail' });
+        }
+
+        const mailbox = getOne(`
+            SELECT * FROM email_mailboxes
+            WHERE id = '${ticket.email_mailbox_id}' AND org_id = '${decoded.orgId}'
+        `);
+        if (!mailbox) {
+            return res.status(404).json({ error: 'Caixa de e-mail não encontrada' });
+        }
+
+        const toEmail = ticket.email_reply_to || ticket.email_from || ticket.origin_contact;
+        if (!toEmail) {
+            return res.status(400).json({ error: 'E-mail do cliente não encontrado' });
+        }
+
+        const baseSubject = (subject || ticket.email_subject || `Ticket ${ticketId}`).trim();
+        const finalSubject = baseSubject.toLowerCase().startsWith('re:') ? baseSubject : `Re: ${baseSubject}`;
+        const text = content.trim();
+        const html = text
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/\n/g, '<br/>');
+
+        const referenceParts = [];
+        if (ticket.email_references) referenceParts.push(ticket.email_references);
+        if (ticket.email_message_id) referenceParts.push(ticket.email_message_id);
+        const references = referenceParts.join(' ').trim();
+
+        let info;
+        try {
+            info = await sendEmailReply({
+                mailbox,
+                to: toEmail,
+                subject: finalSubject,
+                text,
+                html,
+                inReplyTo: ticket.email_message_id || ticket.origin_reference,
+                references,
+                replyTo: ticket.email_reply_to,
+                fromName: mailbox.smtp_from_name || mailbox.name,
+                fromEmail: mailbox.smtp_from_email || mailbox.smtp_username || mailbox.username
+            });
+        } catch (err) {
+            run(`
+                INSERT INTO email_send_logs (ticket_id, mailbox_id, to_email, subject, status, error)
+                VALUES ('${ticketId}', '${mailbox.id}', '${toEmail.replace(/'/g, "''")}', '${finalSubject.replace(/'/g, "''")}', 'error', '${String(err.message || err).replace(/'/g, "''")}')
+            `);
+            return res.status(400).json({ error: err.message || 'Falha ao enviar e-mail' });
+        }
+
+        run(`
+            INSERT INTO email_send_logs (ticket_id, mailbox_id, to_email, subject, status, error)
+            VALUES ('${ticketId}', '${mailbox.id}', '${toEmail.replace(/'/g, "''")}', '${finalSubject.replace(/'/g, "''")}', 'sent', NULL)
+        `);
+
+        const commentId = uuidv4();
+        const now = new Date().toISOString();
+        const escapedContent = text.replace(/'/g, "''");
+        run(`
+            INSERT INTO ticket_comments (id, ticket_id, user_id, comment_type, content, created_at)
+            VALUES ('${commentId}', '${ticketId}', '${decoded.userId}', 'public', '${escapedContent}', '${now}')
+        `);
+
+        if (!ticket.first_response_at) {
+            run(`UPDATE tickets SET first_response_at = '${now}', updated_at = '${now}' WHERE id = '${ticketId}'`);
+        } else {
+            run(`UPDATE tickets SET updated_at = '${now}' WHERE id = '${ticketId}'`);
+        }
+
+        const comment = getOne(`
+            SELECT c.*, u.name as user_name, u.role as user_role
+            FROM ticket_comments c
+            LEFT JOIN users u ON c.user_id = u.id
+            WHERE c.id = '${commentId}'
+        `);
+
+        res.status(201).json({ comment, messageId: info?.messageId });
+    } catch (error) {
+        console.error('Error sending email reply:', error);
+        res.status(500).json({ error: 'Erro ao enviar e-mail' });
     }
 });
 
